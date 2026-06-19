@@ -1,0 +1,105 @@
+#!/bin/sh
+
+IMAGE_FILE=/lib/firmware/tlt_rut204_fw.dfu
+PRX="stm_usb_can"
+
+log_stm() {
+	echo "$PRX: $1" > /dev/console
+}
+
+check_version() {
+	ver=$(cat /sys/stm-gpio/fw_version)
+	cnt=3
+
+	while [ "$cnt" -gt 0 ] && [ -z "$ver" ]; do
+		sleep 1
+		ver=$(cat /sys/stm-gpio/fw_version)
+		cnt=$((cnt-1))
+	done
+
+	echo $ver
+}
+
+check_firmware() {
+	ver=$(dd if=$IMAGE_FILE bs=1 skip=$((0xC0)) count=26 2>/dev/null | awk -v RS='\0' '{print; exit}')
+
+	echo $ver
+}
+
+finalize() {
+	cur_ver=$(check_version)
+	fw_ver=$(check_firmware)
+
+	if [ "$cur_ver" != "$fw_ver" ]; then
+		log_stm "An attempt was made to upgrade STM32 without success."
+		log_stm "STM32 subsystem is not functioning correctly!"
+		ledman --clean
+		# touch /tmp/stm32_fail # Do we need this?
+		exit 0
+	fi
+
+	log_stm "### ROUTER IS REBOOTING DUE TO STM32 UPGRADE! ###"
+	sync && reboot -f
+	exit 0
+}
+
+do_stm32_upgrade() {
+
+	cur_ver=$(check_version)
+	fw_ver=$(check_firmware)
+
+	log_stm "Current: $cur_ver; available: $fw_ver"
+
+	if [ "$cur_ver" = "$fw_ver" ]; then
+		log_stm "STM Versions match. No flashing needed."
+		return
+	fi
+
+	count=0
+
+	while [ "$count" -lt 5 ]; do
+		dfu-util -R -a 0 -s 0x08000000 -D /lib/firmware/tlt_rut204_fw.dfu && {
+			log_stm "STM32 firmware upgrade successful."
+			break
+		}
+
+		log_stm "Flashing failed, retrying ($count)..."
+		gpioset -m time -s 1 $(gpiofind GPIO_STM_RESET)=0; gpioset $(gpiofind GPIO_STM_RESET)=1
+		count=$((count+1))
+		sleep 2
+	done
+
+	if [ $count -eq 5 ]; then
+		finalize
+	fi
+
+	count=0
+
+	log_stm "Resetting STM32..."
+
+	while [ "$count" -lt 5 ]; do
+		gpioset -m time -s 1 $(gpiofind GPIO_STM_RESET)=0; gpioset $(gpiofind GPIO_STM_RESET)=1 && {
+			log_stm "STM reset successful"
+			break
+		}
+
+		log_stm "Resetting failed, retrying ($count)..."
+		count=$((count+1))
+		sleep 2
+	done
+
+	if [ $count -eq 5 ]; then
+		finalize
+	fi
+
+	log_stm "Done"
+	exit 0
+}
+
+if [ ! -f "$IMAGE_FILE" ]; then
+	exit 0
+fi
+
+[ "$(jsonfilter -i /etc/board.json -e '@.hwinfo.stm_can')" = "true" ] || exit 0
+
+do_stm32_upgrade

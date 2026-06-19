@@ -1,0 +1,31 @@
+From 65f3ff9672ccd5ee78937047e7a2fc696eee1c8f Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Thu, 13 Jul 2023 04:07:16 +0100
+Subject: [PATCH 10/15] block: add new genhd flag GENHD_FL_NVMEM
+
+Add new flag to destinguish block devices which may act as an NVMEM
+provider.
+
+Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+---
+ include/linux/blkdev.h | 2 ++
+ 1 file changed, 2 insertions(+)
+
+--- a/include/linux/genhd.h
++++ b/include/linux/genhd.h
+@@ -70,6 +70,7 @@ struct partition_meta_info {
+  * Implies ``GENHD_FL_SUPPRESS_PARTITION_INFO`` and
+  * ``GENHD_FL_NO_PART``.
+  * Used for multipath devices.
++ * ``GENHD_FL_NVMEM``: the block device should be considered as NVMEM provider.
+  */
+ #define GENHD_FL_REMOVABLE			0x0001
+ /* 2 is unused (used to be GENHD_FL_DRIVERFS) */
+@@ -79,6 +80,7 @@ struct partition_meta_info {
+ #define GENHD_FL_EXT_DEVT			0x0040
+ #define GENHD_FL_NO_PART			0x0200
+ #define GENHD_FL_HIDDEN				0x0400
++#define GENHD_FL_NVMEM				0x0800
+ 
+ enum {
+ 	DISK_EVENT_MEDIA_CHANGE			= 1 << 0, /* media changed */

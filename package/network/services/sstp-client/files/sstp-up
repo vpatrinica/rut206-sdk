@@ -1,0 +1,24 @@
+#!/bin/sh
+. /usr/share/libubox/jshn.sh
+
+section_name="${IFNAME#*-}"
+service=$(uci -q get "network.${section_name}.proto")
+[ "$service" != "sstp" ] && exit 0 
+
+set_sstp_status() {
+	local status_dir="/var/state/sstp"
+	local status_file="${status_dir}/${section_name}.status"
+	json_init
+	json_add_string "conndate" "$(date +%s)"
+	json_add_string "local_ip" "$IPLOCAL"
+	json_add_string "remote_ip" "$IPREMOTE"
+	json_add_string "interface" "${IFNAME}"
+	json_dump > "$status_file"
+	chmod 644 "$status_file"
+}
+
+if [ -n "$IPLOCAL" ] || [ -n "$IPREMOTE" ]; then
+	set_sstp_status
+fi
+
+exit 0

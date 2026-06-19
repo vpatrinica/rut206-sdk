@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+add_user() {
+	local username
+	local section="$1"
+	config_get username "$section" username
+
+	[ -z "$(uci_get "totp" "$username")" ] || return
+
+	uci_add "totp" "user" "$username"
+	uci_set "totp" "$username" "enabled" "0"
+	uci_set "totp" "$username" "verified" "0"
+}
+
+config_load rpcd
+config_foreach add_user login
+uci_commit totp

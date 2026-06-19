@@ -1,0 +1,58 @@
+--- a/drivers/leds/led-core.c
++++ b/drivers/leds/led-core.c
+@@ -75,6 +75,10 @@ static void led_timer_function(struct ti
+ 		return;
+ 	}
+ 
++	if(led_cdev->next_blink == 0) {
++		led_cdev->next_blink = jiffies;
++	}
++
+ 	brightness = led_get_brightness(led_cdev);
+ 	if (!brightness) {
+ 		/* Time to switch the LED on. */
+@@ -84,6 +88,7 @@ static void led_timer_function(struct ti
+ 		else
+ 			brightness = led_cdev->blink_brightness;
+ 		delay = led_cdev->blink_delay_on;
++		
+ 	} else {
+ 		/* Store the current brightness value to be able
+ 		 * to restore it when the delay_off period is over.
+@@ -111,7 +116,8 @@ static void led_timer_function(struct ti
+ 		}
+ 	}
+ 
+-	mod_timer(&led_cdev->blink_timer, jiffies + msecs_to_jiffies(delay));
++	led_cdev->next_blink += msecs_to_jiffies(delay);
++	mod_timer(&led_cdev->blink_timer, led_cdev->next_blink);
+ }
+ 
+ static void set_brightness_delayed(struct work_struct *ws)
+@@ -165,6 +171,8 @@ static void led_set_software_blink(struc
+ 		return;
+ 	}
+ 
++	led_cdev->next_blink = 0;
++
+ 	set_bit(LED_BLINK_SW, &led_cdev->work_flags);
+ 	mod_timer(&led_cdev->blink_timer, jiffies + 1);
+ }
+@@ -234,6 +242,7 @@ void led_stop_software_blink(struct led_
+ 	del_timer_sync(&led_cdev->blink_timer);
+ 	led_cdev->blink_delay_on = 0;
+ 	led_cdev->blink_delay_off = 0;
++	led_cdev->next_blink = 0;
+ 	clear_bit(LED_BLINK_SW, &led_cdev->work_flags);
+ }
+ EXPORT_SYMBOL_GPL(led_stop_software_blink);
+--- a/include/linux/leds.h
++++ b/include/linux/leds.h
+@@ -134,6 +134,7 @@ struct led_classdev {
+ 	const char		*default_trigger;	/* Trigger to use */
+ 
+ 	unsigned long		 blink_delay_on, blink_delay_off;
++	unsigned long 		 next_blink;
+ 	struct timer_list	 blink_timer;
+ 	int			 blink_brightness;
+ 	int			 new_blink_brightness;

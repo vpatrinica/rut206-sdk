@@ -1,0 +1,277 @@
+#!/bin/sh
+. /lib/functions.sh
+
+[ -e "/etc/config/event_juggler" ] || exit 0
+
+get_value() {
+	local map="$1"
+	local key="$2"
+	for pair in $map; do
+		case "$pair" in
+			"$key"*) echo "${pair#*:}" && return ;;
+		esac
+	done
+}
+
+get_max_name(){
+	local type="$1"
+	local name_max_id=0
+	check_id(){
+		local sid="$1"
+		local name
+		local num
+		name="$(uci_get event_juggler "$sid" name)"
+		num="$(echo "$name" | sed -n "s/^${type}\([0-9]\+\)$/\1/p")"
+		[ -n "$num" ] && [ "$num" -gt "$name_max_id" ] && name_max_id="$num"
+		[ "$sid" -gt "$max_sid" ] && max_sid="$sid"
+	}
+	config_foreach check_id "$type"
+	echo "$name_max_id $max_sid"
+}
+
+copy_section() {
+	local src="$1"
+	local dest="$2"
+	local type="$3"
+	local is_list=0
+	copy_list() {
+		uci_add_list "event_juggler" "$dest" "$option" "$1"
+		is_list=1
+	}
+
+	uci_add "event_juggler" "$type" "$dest"
+	uci show "event_juggler.$src" | while IFS='=' read -r key value; do
+		local option
+		option="$(echo "$key" | cut -d'.' -f3)"
+		if [ "$option" = "actions" ] || [ "$option" = "conditions" ]; then
+			continue
+		fi
+		is_list=0
+		config_list_foreach "$src" "$option" copy_list
+		[ "$is_list" != 1 ] && {
+			local value
+			value="$(uci_get event_juggler "$src" "$option")"
+			[ -n "$option" ] && uci_set "event_juggler" "$dest" "$option" "$value"
+		}
+	done
+	uci_set event_juggler "$dest" io_juggler ""
+	uci_set event_juggler "$dest" events_reporting ""
+}
+
+migrate_events(){
+	local sid="$1"
+	local event_sid
+	local event_conditions_orig_sids
+	local event_conditions_copied_sids
+	
+	if [ -z "$(uci_get event_juggler "$sid" events_reporting)" ] && [ -z "$(uci_get event_juggler "$sid" io_juggler)" ]; then
+		return
+	fi
+
+	if [ "$(uci_get event_juggler "$sid" power_control)" = "1" ]; then
+		return
+	fi
+
+	event_name=$((event_name + 1))
+	max_sid=$((max_sid + 1))
+	event_sid="$max_sid"
+	copy_section "$sid" "$event_sid" "event"
+	uci_set event_juggler "$event_sid" name "event${event_name}"
+	if [ "$(uci_get event_juggler "$sid" events_reporting)" ]; then
+		uci_set event_juggler "$event_sid" migrated_from "events_reporting"
+	elif [ "$(uci_get event_juggler "$sid" io_juggler)" ]; then
+		uci_set event_juggler "$event_sid" migrated_from "io_juggler"
+	fi
+	uci_set event_juggler "$sid" enabled "0" # disable old events
+
+	local event_used_conditions=""
+	local event_used_conditions_map=""
+
+	config_list_foreach "$sid" "conditions" migrate_conditions > /dev/null 2>&1
+	event_conditions_orig_sids="$event_used_conditions" # global event conditions => conditions on every action
+	event_conditions_copied_sids="$(uci_get event_juggler "$event_sid" available_conditions)"
+	config_list_foreach "$sid" "actions" migrate_actions
+}
+
+migrate_conditions(){
+	local sid="$1"
+	local condition_sid
+	local res
+	local bool_cond_sid
+	
+	if ! list_contains event_used_conditions "$sid"; then
+		condition_name=$((condition_name + 1))
+		max_sid=$((max_sid + 1))
+		condition_sid="$max_sid"
+		copy_section "$sid" "$condition_sid" "condition"
+		uci_set event_juggler "$condition_sid" name "condition${condition_name}"
+		event_used_conditions_map="$event_used_conditions_map $sid:$condition_sid"
+		event_used_conditions="$event_used_conditions $sid"
+		used_conditions="$used_conditions $sid"
+		uci_add_list "event_juggler" "$event_sid" "available_conditions" "$condition_sid"
+		if [ "$(uci_get event_juggler "$sid" plugin)" = "bool" ]; then
+			uci_set event_juggler "$condition_sid" bool_conditions ""
+			migrate_bool_conditions(){
+				res="$(migrate_conditions "$1")"
+				bool_cond_sid="$(echo "$res" | awk -F ',' '{print $1}')"
+				max_sid="$(echo "$res" | awk -F ',' '{print $2}')"
+				condition_name="$(echo "$res" | awk -F ',' '{print $3}')"
+				event_used_conditions_map="$(echo "$res" | awk -F ',' '{print $4}')"
+				event_used_conditions="$(echo "$res" | awk -F ',' '{print $5}')"
+				used_conditions="$(echo "$res" | awk -F ',' '{print $6}')"
+				uci_add_list "event_juggler" "$condition_sid" "bool_conditions" "$bool_cond_sid"
+			}
+			config_list_foreach "$sid" "bool_conditions" migrate_bool_conditions
+		fi
+	else
+		condition_sid="$(get_value "$event_used_conditions_map" "$sid")"
+	fi
+	echo "$condition_sid,$max_sid,$condition_name,$event_used_conditions_map,$event_used_conditions,$used_conditions"
+}
+handle_action_inconsistencies(){
+	local src
+	local file_type
+	local dst
+	local http_ui_params
+	local http_ui_params_inverted
+	local certfile
+	local cert_sid
+	
+	case "$(uci_get event_juggler "$sid" plugin)" in
+		exec)
+			src="$(uci_get event_juggler "$sid" exec_path)"
+			if [ -n "$src" ]; then
+				file_type="$(uci_get event_juggler "$sid" exec_file_type)"
+				if [ "$file_type" = "upload" ]; then
+					dst=$(echo "$src" | sed "s/\.[0-9]\+\.upload/.${action_sid}.exec_file_upload/")
+					uci_set event_juggler "$action_sid" exec_path "$dst"
+					uci_set event_juggler "$action_sid" exec_file_upload "$dst"
+					cp -a "$src" "$dst"
+					if [ "$(head -c 2 "$dst")" != "#!" ]; then
+						sed -i "1s/^/#!\/bin\/sh\n/" "$dst"
+					fi
+				elif [ "$file_type" = "path" ]; then
+					uci_set event_juggler "$action_sid" exec_file_path "$src"
+				fi
+			fi
+			;;
+		out)
+			if [ -z "$(uci_get event_juggler "$sid" out_mode)" ]; then
+				uci_set event_juggler "$action_sid" out_mode "set"
+			fi
+			;;
+		http)
+			http_ui_params=$(uci_get event_juggler "$sid" http_ui_params)
+			http_ui_params_inverted=$((1 - http_ui_params))
+			uci_set event_juggler "$action_sid" http_ui_params "$http_ui_params_inverted"
+			;;
+		mqtt)
+			if [ "$(uci_get event_juggler "$sid" mqtt_username)" ] || [ "$(uci_get event_juggler "$sid" mqtt_password)" ]; then
+				uci_set event_juggler "$action_sid" mqtt_use_credentials "1"
+			fi
+			uci_set event_juggler "$action_sid" _device_files ""
+			if [ "$(uci_get event_juggler "$sid" mqtt_tls)" = "1" ]; then
+				add_to_certificate_services_list(){
+					local opt="$1"
+					certfile="$(uci_get event_juggler "$sid" "$opt")"
+					if [ "$certfile" ]; then
+						cert_sid=$(uci show certificates | grep "path='${certfile}'" | cut -d'.' -f2)
+						uci_add_list "certificates" "$cert_sid" "services" "event_juggler:$action_sid"
+					fi
+				}
+				add_to_certificate_services_list "mqtt_cafile"
+				add_to_certificate_services_list "mqtt_certfile"
+				add_to_certificate_services_list "mqtt_keyfile"
+			fi
+			;;
+	esac
+}
+
+migrate_actions(){
+	local sid="$1"
+	local action_sid
+	local res
+	local cond_sid
+	local condition
+	
+	action_name=$((action_name + 1))
+	max_sid=$((max_sid + 1))
+	action_sid="$max_sid"
+	used_actions="$used_actions $sid"
+	copy_section "$sid" "$action_sid" "action"
+	uci_set event_juggler "$action_sid" name "action${action_name}"
+	uci_add_list "event_juggler" "$event_sid" "actions" "$action_sid"
+	handle_action_inconsistencies
+	for condition in $event_conditions_copied_sids; do
+		uci_add_list "event_juggler" "$action_sid" "conditions" "$condition"
+	done
+	migrate_action_conditions(){
+		if ! list_contains event_conditions_orig_sids "$1"; then
+			res=$(migrate_conditions "$1")
+			cond_sid=$(echo "$res" | awk -F ',' '{print $1}')
+			max_sid=$(echo "$res" | awk -F ',' '{print $2}')
+			condition_name=$(echo "$res" | awk -F ',' '{print $3}')
+			event_used_conditions_map=$(echo "$res" | awk -F ',' '{print $4}')
+			event_used_conditions=$(echo "$res" | awk -F ',' '{print $5}')
+			used_conditions=$(echo "$res" | awk -F ',' '{print $6}')
+			uci_add_list "event_juggler" "$action_sid" "conditions" "$cond_sid"
+		fi
+	}
+	config_list_foreach "$sid" "conditions" migrate_action_conditions
+}
+
+check_io_juggler_unused(){
+	local sid="$1"
+	local type="$2"
+  
+	if [ "$(uci_get event_juggler "$sid" power_control)" = "1" ]; then
+		return
+	fi
+
+	prepare_blank_event(){
+		event_name=$((event_name + 1))
+		max_sid=$((max_sid + 1))
+		uci_add "event_juggler" "event" "$max_sid"
+		uci_set "event_juggler" "$max_sid" name "event${event_name}"
+		event_sid="$max_sid"
+		uci_set "event_juggler" "$event_sid" "migrated_from" "io_juggler_unused"
+	}
+
+	if [ "$(uci_get event_juggler "$sid" io_juggler)" ]; then
+		if [ "$type" = "action" ] && ! list_contains used_actions "$sid"; then
+			[ -z "$event_sid" ] && prepare_blank_event
+			migrate_actions "$sid"
+		elif [ "$type" = "condition" ] && ! list_contains used_conditions "$sid"; then
+			[ -z "$event_sid" ] && prepare_blank_event
+			migrate_conditions "$sid" > /dev/null 2>&1
+		fi
+	fi
+}
+
+config_load event_juggler
+
+max_sid=0
+used_conditions=""
+used_actions=""
+res=$(get_max_name "event")
+event_name=$(echo "$res" | awk '{print $1}')
+max_sid=$(echo "$res" | awk '{print $2}')
+res=$(get_max_name "action")
+action_name=$(echo "$res" | awk '{print $1}')
+max_sid=$(echo "$res" | awk '{print $2}')
+res=$(get_max_name "condition")
+condition_name=$(echo "$res" | awk '{print $1}')
+max_sid=$(echo "$res" | awk '{print $2}')
+
+config_foreach migrate_events event
+
+event_sid=""
+event_used_conditions=""
+event_used_conditions_map=""
+config_foreach check_io_juggler_unused action "action"
+config_foreach check_io_juggler_unused condition "condition"
+
+uci_commit event_juggler
+uci_commit certificates
+
+exit 0

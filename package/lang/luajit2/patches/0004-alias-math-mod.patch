@@ -1,0 +1,13 @@
+index 4539f804..835bf472 100644
+--- a/src/lib_math.c
++++ b/src/lib_math.c
+@@ -196,6 +196,9 @@ LUALIB_API int luaopen_math(lua_State *L)
+   PRNGState *rs = (PRNGState *)lua_newuserdata(L, sizeof(PRNGState));
+   lj_prng_seed_fixed(rs);
+   LJ_LIB_REG(L, LUA_MATHLIBNAME, math);
++  // Alias math.mod to math.fmod for lua5.1 compatibility
++  lua_getfield(L, -1, "fmod");
++  lua_setfield(L, -2, "mod");
+   return 1;
+ }
+ 

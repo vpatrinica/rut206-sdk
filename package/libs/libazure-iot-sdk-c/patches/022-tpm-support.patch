@@ -1,0 +1,437 @@
+Index: libazure-iot-sdk-c-2024-11-05/c-utility/CMakeLists.txt
+===================================================================
+--- libazure-iot-sdk-c-2024-11-05.orig/c-utility/CMakeLists.txt
++++ libazure-iot-sdk-c-2024-11-05/c-utility/CMakeLists.txt
+@@ -31,6 +31,7 @@ option(suppress_header_searches "do not
+ option(use_custom_heap "use externally defined heap functions instead of the malloc family" OFF)
+ option(no_openssl_engine "Disables the use of ENGINEs in OpenSSL" OFF)
+ option(enable_ipv6 "set enable_ipv6 to ON to enable dual-ip-stack (IPv4 and IPv6) support (default is OFF for IPv4 only)" OFF)
++option(az_tpm_support "Disables TPM support" OFF)
+ 
+ if(${use_custom_heap})
+     add_definitions(-DGB_USE_CUSTOM_HEAP)
+@@ -133,6 +134,14 @@ if(${use_openssl})
+         add_definitions(-DOPENSSL_API_COMPAT=0x10101000L)
+     endif()
+ 
++     if (${az_tpm_support})
++        if (DEFINED OPENSSL_VERSION AND (${OPENSSL_VERSION} GREATER_EQUAL 3))
++            add_definitions(-DAZ_TPM_SUPPORT)
++        else()
++            message(WARNING, "The TPM support is only available with Openssl version >= 3.0. Your current version is ${OPENSSL_VERSION}")
++        endif()
++    endif()
++
+     include_directories(${OPENSSL_INCLUDE_DIR})
+ endif()
+ 
+Index: libazure-iot-sdk-c-2024-11-05/c-utility/adapters/tlsio_openssl.c
+===================================================================
+--- libazure-iot-sdk-c-2024-11-05.orig/c-utility/adapters/tlsio_openssl.c
++++ libazure-iot-sdk-c-2024-11-05/c-utility/adapters/tlsio_openssl.c
+@@ -23,6 +23,11 @@
+ #include "azure_c_shared_utility/const_defines.h"
+ #include "azure_c_shared_utility/safe_math.h"
+ 
++#ifdef AZ_TPM_SUPPORT
++#include <openssl/provider.h>
++#include <openssl/store.h>
++#endif
++
+ typedef enum TLSIO_STATE_TAG
+ {
+     TLSIO_STATE_NOT_OPEN,
+@@ -66,6 +71,11 @@ typedef struct TLS_IO_INSTANCE_TAG
+     void* on_io_error_context;
+     SSL* ssl;
+     SSL_CTX* ssl_context;
++#ifdef AZ_TPM_SUPPORT
++    OSSL_LIB_CTX *libctx;
++    OSSL_PROVIDER *prov;
++    char *provider;
++#endif //AZ_TPM_SUPPORT
+     BIO* in_bio;
+     BIO* out_bio;
+     TLSIO_STATE tlsio_state;
+@@ -258,6 +268,15 @@ static void* tlsio_openssl_CloneOption(c
+ 
+             result = value_clone;
+         }
++#ifdef AZ_TPM_SUPPORT
++        else if (strcmp(name, OPTION_OPENSSL_PROVIDER) == 0) {
++            if (mallocAndStrcpy_s((char**)&result, value) != 0)
++            {
++                LogError("unable to mallocAndStrcpy_s provider value");
++                result = NULL;
++            }
++        }
++#endif //AZ_TPM_SUPPORT
+         else
+         {
+             LogError("not handled option : %s", name);
+@@ -286,9 +305,12 @@ static void tlsio_openssl_DestroyOption(
+             (strcmp(name, SU_OPTION_X509_PRIVATE_KEY) == 0) ||
+             (strcmp(name, OPTION_X509_ECC_CERT) == 0) ||
+             (strcmp(name, OPTION_X509_ECC_KEY) == 0) ||
+-            (strcmp(name, OPTION_TLS_VERSION) == 0) || 
+-            (strcmp(name, OPTION_OPENSSL_ENGINE) == 0) || 
++            (strcmp(name, OPTION_TLS_VERSION) == 0) ||
++            (strcmp(name, OPTION_OPENSSL_ENGINE) == 0) ||
+             (strcmp(name, OPTION_OPENSSL_PRIVATE_KEY_TYPE) == 0)
++#ifdef AZ_TPM_SUPPORT
++            || (strcmp(name, OPTION_OPENSSL_PROVIDER) == 0)
++#endif //AZ_TPM_SUPPORT
+            )
+         {
+             free((void*)value);
+@@ -392,6 +414,13 @@ static OPTIONHANDLER_HANDLE tlsio_openss
+                     OptionHandler_Destroy(result);
+                     result = NULL;
+                 }
++#ifdef AZ_TPM_SUPPORT
++                else if (tls_io_instance->provider != NULL && OptionHandler_AddOption(result, OPTION_OPENSSL_PROVIDER, tls_io_instance->provider) != OPTIONHANDLER_OK) {
++                    LogError("unable to save Provider option");
++                    OptionHandler_Destroy(result);
++                    result = NULL;
++                }
++#endif //AZ_TPM_SUPPORT
+                 else if (
+                     (tls_io_instance->x509_private_key_type != KEY_TYPE_DEFAULT) &&
+                     (OptionHandler_AddOption(result, OPTION_OPENSSL_PRIVATE_KEY_TYPE, &tls_io_instance->x509_private_key_type))
+@@ -431,8 +460,8 @@ static OPTIONHANDLER_HANDLE tlsio_openss
+                     /*return as is*/
+                 }
+ 
+-                // Must destroy since OptionHandler_AddOption creates a copy of it. 
+-                OptionHandler_Destroy(underlying_io_options); 
++                // Must destroy since OptionHandler_AddOption creates a copy of it.
++                OptionHandler_Destroy(underlying_io_options);
+             }
+         }
+     }
+@@ -1061,12 +1090,67 @@ static int enable_domain_check(TLS_IO_IN
+     return result;
+ }
+ 
++#ifdef AZ_TPM_SUPPORT
++static int load_providers(TLS_IO_INSTANCE* tlsInstance)
++{
++
++    if(OSSL_PROVIDER_available(tlsInstance->libctx, tlsInstance->provider)) {
++        LogError("Provider '%s' is already loaded", tlsInstance->provider);
++
++        return 0;
++    }
++
++    tlsInstance->prov = OSSL_PROVIDER_try_load(tlsInstance->libctx, tlsInstance->provider, 1);
++    if(!tlsInstance->prov) {
++        LogError("Failed to initialize provider: %s\n", tlsInstance->provider);
++
++        return 1;
++    }
++
++    return 0;
++}
++#endif //AZ_TPM_SUPPORT
++
++static inline int openssl_add_credentials(TLS_IO_INSTANCE* tlsInstance)
++{
++#ifdef AZ_TPM_SUPPORT
++    if (tlsInstance->x509_private_key_type == KEY_TYPE_PROVIDER) {
++        return x509_openssl_add_credentials_prov(tlsInstance->ssl_context, tlsInstance->libctx,
++                    tlsInstance->x509_certificate, tlsInstance->x509_private_key);
++    }
++#endif //AZ_TPM_SUPPORT
++
++    return x509_openssl_add_credentials(tlsInstance->ssl_context, tlsInstance->x509_certificate,
++            tlsInstance->x509_private_key,
++    #ifndef OPENSSL_NO_ENGINE
++            tlsInstance->x509_private_key_type,
++            tlsInstance->engine);
++    #else // OPENSSL_NO_ENGINE
++            tlsInstance->x509_private_key_type);
++    #endif // OPENSSL_NO_ENGINE
++}
++
+ static int create_openssl_instance(TLS_IO_INSTANCE* tlsInstance)
+ {
+     int result;
+ 
+     const SSL_METHOD* method = NULL;
+ 
++#ifdef AZ_TPM_SUPPORT
++    tlsInstance->libctx = OSSL_LIB_CTX_new();
++    if(!tlsInstance->libctx) {
++        LogError("Failed to create poenssl context");
++
++        return MU_FAILURE;
++    }
++
++    if (tlsInstance->provider) {
++        if (load_providers(tlsInstance)) {
++            goto err;
++        }
++    }
++#endif //AZ_TPM_SUPPORT
++
+ #if (OPENSSL_VERSION_NUMBER >= 0x30000000L)
+     method = TLS_method();
+     if (tlsInstance->tls_version == VERSION_1_2) {
+@@ -1096,7 +1180,11 @@ static int create_openssl_instance(TLS_I
+     }
+ #endif
+ 
++#ifdef AZ_TPM_SUPPORT
++    tlsInstance->ssl_context = SSL_CTX_new_ex(tlsInstance->libctx, NULL, method);
++#else
+     tlsInstance->ssl_context = SSL_CTX_new(method);
++#endif //AZ_TPM_SUPPORT
+     if (tlsInstance->ssl_context == NULL)
+     {
+         log_ERR_get_error("Failed allocating OpenSSL context.");
+@@ -1136,28 +1224,16 @@ static int create_openssl_instance(TLS_I
+         result = MU_FAILURE;
+     }
+     /*x509 authentication can only be build before underlying connection is realized*/
+-    else if (
+-        (tlsInstance->x509_certificate != NULL) &&
+-        (tlsInstance->x509_private_key != NULL) &&
+-        (x509_openssl_add_credentials(
+-            tlsInstance->ssl_context, 
+-            tlsInstance->x509_certificate, 
+-            tlsInstance->x509_private_key,
+-    #ifndef OPENSSL_NO_ENGINE
+-            tlsInstance->x509_private_key_type,
+-            tlsInstance->engine) != 0)
+-    #else // OPENSSL_NO_ENGINE
+-            tlsInstance->x509_private_key_type) != 0)
+-    #endif // OPENSSL_NO_ENGINE
+-        )
+-    {
++    else if ((tlsInstance->x509_certificate != NULL) && (tlsInstance->x509_private_key != NULL) &&
++            openssl_add_credentials(tlsInstance) != 0) {
+ #if (OPENSSL_VERSION_NUMBER < 0x30000000L)
+              engine_destroy(tlsInstance);
+ #endif
+         SSL_CTX_free(tlsInstance->ssl_context);
+         tlsInstance->ssl_context = NULL;
+         log_ERR_get_error("unable to use x509 authentication");
+-        result = MU_FAILURE;
++
++        goto err;
+     }
+     else
+     {
+@@ -1263,7 +1339,15 @@ static int create_openssl_instance(TLS_I
+             }
+         }
+     }
++
+     return result;
++
++err:
++#ifdef AZ_TPM_SUPPORT
++    OSSL_LIB_CTX_free(tlsInstance->libctx);
++#endif //AZ_TPM_SUPPORT
++
++    return MU_FAILURE;
+ }
+ 
+ int tlsio_openssl_init(void)
+@@ -1399,6 +1483,12 @@ CONCRETE_IO_HANDLE tlsio_openssl_create(
+                 result->engine = NULL;
+                 result->x509_private_key_type = KEY_TYPE_DEFAULT;
+ 
++#ifdef AZ_TPM_SUPPORT
++                result->provider = NULL;
++                result->prov = NULL;
++                result->libctx = NULL;
++#endif //AZ_TPM_SUPPORT
++
+                 result->tls_version = VERSION_1_2;
+ 
+                 result->underlying_io = xio_create(underlying_io_interface, io_interface_parameters);
+@@ -1460,6 +1550,13 @@ void tlsio_openssl_destroy(CONCRETE_IO_H
+             free(tls_io_instance->engine_id);
+             tls_io_instance->engine_id = NULL;
+         }
++#ifdef AZ_TPM_SUPPORT
++        if (tls_io_instance->provider != NULL)
++        {
++            free(tls_io_instance->provider);
++            tls_io_instance->provider = NULL;
++        }
++#endif
+ 
+         free(tls_io);
+     }
+@@ -1810,6 +1907,20 @@ int tlsio_openssl_setoption(CONCRETE_IO_
+             }
+         }
+         #endif // OPENSSL_NO_ENGINE
++#ifdef AZ_TPM_SUPPORT
++        else if (strcmp(OPTION_OPENSSL_PROVIDER, optionName) == 0)
++        {
++            if (mallocAndStrcpy_s((char**)&tls_io_instance->provider, value) != 0)
++            {
++                LogError("unable to mallocAndStrcpy_s %s", optionName);
++                result = MU_FAILURE;
++            }
++            else
++            {
++                result = 0;
++            }
++        }
++#endif //AZ_TPM_SUPPORT
+         else if (strcmp(OPTION_OPENSSL_PRIVATE_KEY_TYPE, optionName) == 0)
+         {
+             const OPTION_OPENSSL_KEY_TYPE type = *(const OPTION_OPENSSL_KEY_TYPE*)value;
+@@ -1817,6 +1928,9 @@ int tlsio_openssl_setoption(CONCRETE_IO_
+             {
+             case KEY_TYPE_DEFAULT:
+             case KEY_TYPE_ENGINE:
++#ifdef AZ_TPM_SUPPORT
++            case KEY_TYPE_PROVIDER:
++#endif //AZ_TPM_SUPPORT
+                 tls_io_instance->x509_private_key_type = type;
+                 result = 0;
+                 break;
+Index: libazure-iot-sdk-c-2024-11-05/c-utility/adapters/x509_openssl.c
+===================================================================
+--- libazure-iot-sdk-c-2024-11-05.orig/c-utility/adapters/x509_openssl.c
++++ libazure-iot-sdk-c-2024-11-05/c-utility/adapters/x509_openssl.c
+@@ -15,6 +15,10 @@
+ #include "openssl/engine.h"
+ #endif // OPENSSL_NO_ENGINE
+ 
++#ifdef AZ_TPM_SUPPORT
++#include <openssl/store.h>
++#endif //AZ_TPM_SUPPORT
++
+ #ifdef __APPLE__
+     #ifndef EVP_PKEY_id
+         #define EVP_PKEY_id(evp_key) evp_key->type
+@@ -260,6 +264,84 @@ int x509_openssl_add_engine_key(SSL_CTX*
+ }
+ #endif // OPENSSL_NO_ENGINE
+ 
++
++#ifdef AZ_TPM_SUPPORT
++int x509_openssl_add_provider_key(SSL_CTX* ssl_ctx, OSSL_LIB_CTX *libctx, const char* uri)
++{
++    UI_METHOD *ui_pkey_method = NULL;
++    OSSL_STORE_CTX *store_ctx = NULL;
++    OSSL_STORE_INFO *store_info = NULL;
++    EVP_PKEY *pkey = NULL;
++    int ret = 1;
++
++    store_ctx = OSSL_STORE_open_ex(uri, libctx, NULL, NULL, NULL, NULL, NULL, NULL);
++    if (!store_ctx) {
++        log_ERR_get_error("Error: Unable to open private key store ctx");
++
++        goto err;
++    }
++
++    if (OSSL_STORE_expect(store_ctx, OSSL_STORE_INFO_PKEY) != 1) {
++        log_ERR_get_error("Error: Unable to find private key in store");
++
++        goto err;
++    }
++
++    store_info = OSSL_STORE_load(store_ctx);
++    if (!store_info) {
++        log_ERR_get_error("Error: Unable to load private key from store");
++
++        goto err;
++    }
++
++    pkey = OSSL_STORE_INFO_get1_PKEY(store_info);
++    if (!pkey) {
++        log_ERR_get_error("Error: Unable to get private key from store");
++
++        goto err;
++    }
++
++    if (SSL_CTX_use_PrivateKey(ssl_ctx, pkey) != 1) {
++        log_ERR_get_error("Error: Unable to use private key from store");
++
++        pkey = NULL;
++        goto err;
++    }
++
++    ret = 0;
++
++err:
++    OSSL_STORE_INFO_free(store_info);
++    OSSL_STORE_close(store_ctx);
++
++    return ret;
++}
++
++int x509_openssl_add_credentials_prov(SSL_CTX* ssl_ctx, OSSL_LIB_CTX *libctx, const char* x509certificate, const char* x509privatekey)
++{
++    int result;
++
++    if (ssl_ctx == NULL || libctx == NULL || x509certificate == NULL || x509privatekey == NULL) {
++        LogError("invalid parameter detected: ssl_ctx=%p, libctx=%p, x509certificate=%p, x509privatekey=%p",
++                    ssl_ctx, libctx, x509certificate, x509privatekey);
++        return MU_FAILURE;
++    }
++
++    result = x509_openssl_add_provider_key(ssl_ctx, libctx, x509privatekey);
++    if (result == 0) {
++        if (load_certificate_chain(ssl_ctx, x509certificate) != 0)
++        {
++            LogError("failure loading public cert or chain");
++            result = MU_FAILURE;
++        }
++    }
++
++    return result;
++}
++
++#endif //AZ_TPM_SUPPORT
++
++
+ #ifndef OPENSSL_NO_ENGINE
+ int x509_openssl_add_credentials(
+     SSL_CTX* ssl_ctx,
+Index: libazure-iot-sdk-c-2024-11-05/c-utility/inc/azure_c_shared_utility/shared_util_options.h
+===================================================================
+--- libazure-iot-sdk-c-2024-11-05.orig/c-utility/inc/azure_c_shared_utility/shared_util_options.h
++++ libazure-iot-sdk-c-2024-11-05/c-utility/inc/azure_c_shared_utility/shared_util_options.h
+@@ -29,12 +29,18 @@ extern "C"
+     static STATIC_VAR_UNUSED const char* const OPTION_OPENSSL_CIPHER_SUITE = "CipherSuite";
+ 
+     static STATIC_VAR_UNUSED const char* const OPTION_OPENSSL_ENGINE = "Engine";
++#ifdef AZ_TPM_SUPPORT
++    static STATIC_VAR_UNUSED const char* const OPTION_OPENSSL_PROVIDER = "Provider";
++#endif //AZ_TPM_SUPPORT
+     static STATIC_VAR_UNUSED const char* const OPTION_OPENSSL_PRIVATE_KEY_TYPE = "x509PrivatekeyType";
+ 
+     typedef enum OPTION_OPENSSL_KEY_TYPE_TAG
+     {
+         KEY_TYPE_DEFAULT,
+-        KEY_TYPE_ENGINE
++        KEY_TYPE_ENGINE,
++#ifdef AZ_TPM_SUPPORT
++        KEY_TYPE_PROVIDER
++#endif //AZ_TPM_SUPPORT
+     } OPTION_OPENSSL_KEY_TYPE;
+ 
+     static STATIC_VAR_UNUSED const char* const SU_OPTION_X509_CERT = "x509certificate";
+Index: libazure-iot-sdk-c-2024-11-05/c-utility/inc/azure_c_shared_utility/x509_openssl.h
+===================================================================
+--- libazure-iot-sdk-c-2024-11-05.orig/c-utility/inc/azure_c_shared_utility/x509_openssl.h
++++ libazure-iot-sdk-c-2024-11-05/c-utility/inc/azure_c_shared_utility/x509_openssl.h
+@@ -20,6 +20,10 @@ MOCKABLE_FUNCTION(,int, x509_openssl_add
+ MOCKABLE_FUNCTION(,int, x509_openssl_add_credentials, SSL_CTX*, ssl_ctx, const char*, x509certificate, const char*, x509privatekey, OPTION_OPENSSL_KEY_TYPE, x509privatekeytype);
+ #endif // OPENSSL_NO_ENGINE
+ 
++#ifdef AZ_TPM_SUPPORT
++int x509_openssl_add_credentials_prov(SSL_CTX* ssl_ctx, OSSL_LIB_CTX *libctx, const char* x509certificate, const char* x509privatekey);
++#endif //AZ_TPM_SUPPORT
++
+ #ifdef __cplusplus
+ }
+ #endif

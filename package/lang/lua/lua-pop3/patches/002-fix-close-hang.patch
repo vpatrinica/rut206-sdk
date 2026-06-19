@@ -1,0 +1,30 @@
+--- a/lua/pop3.lua
++++ b/lua/pop3.lua
+@@ -315,9 +315,24 @@ function pop3:close()
+   if self.close_progress_ then return end
+   if not self:is_open() then  return  end
+   self.close_progress_ = true
+-  self:cmd("QUIT")
+-  assert(self.cnn)
+-  self.cnn:close()
++  -- Use short timeout and best-effort QUIT to prevent
++  -- hanging on broken/stalled TLS connections (LuaSec
++  -- settimeout can be unreliable in disrupted TLS state,
++  -- so we skip reading the QUIT response entirely)
++  local ok, err = pcall(function()
++    DEBUG("POP3 REQUEST  : QUIT")
++    self.cnn:settimeout(5)
++    self.cnn:send("QUIT\r\n")
++  end)
++  if not ok then
++    DEBUG("POP3 WARNING  : QUIT failed: ", tostring(err))
++  end
++  if self.cnn then
++    ok, err = pcall(function() self.cnn:close() end)
++    if not ok then
++      DEBUG("POP3 WARNING  : close failed: ", tostring(err))
++    end
++  end
+   self.cnn             = nil
+   self.is_auth_        = nil
+   self.apop_nonce      = nil

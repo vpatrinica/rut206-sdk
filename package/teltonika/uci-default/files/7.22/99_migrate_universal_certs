@@ -1,0 +1,233 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CERT_DIR="/etc/certificates"
+UPLOAD_DIR="/etc/vuci-uploads"
+
+validate_service() {
+	local path="$1"
+
+	[ ! -f "$path" ] && return 1
+
+	uci_show certificates 2>/dev/null | grep -q "path='${path}'" && return 0
+
+	local type key_size datetime encryption
+
+	local pkey_out pub_pkey_out x509_out req_out enddate_out
+
+	pkey_out=$(openssl pkey -in "$path" -text -noout 2>/dev/null)
+	pub_pkey_out=$(openssl pkey -pubin -in "$path" -text -noout 2>/dev/null)
+	x509_out=$(openssl x509 -in "$path" -text -noout 2>/dev/null)
+	req_out=$(openssl req -in "$path" -text -noout 2>/dev/null)
+	enddate_out=$(openssl x509 -in "$path" -enddate -noout 2>/dev/null)
+
+	# Helper
+	detect_encryption() {
+		case "$1" in
+			*"rsaEncryption"*) echo "rsa" ;;
+			*"id-ecPublicKey"* | *"EC Private-Key:"* | *"EC Public-Key:"*) echo "ecc" ;;
+			*"RSA Public-Key:"*) echo "rsa" ;;
+			*) echo "-" ;;
+		esac
+	}
+
+	if echo "$pkey_out" | grep -q "Private-Key:"; then
+		type="key"
+		key_size=$(echo "$pkey_out" | grep "Private-Key:" | awk '{print $2}' | tr -d '()')
+		encryption=$(detect_encryption "$pkey_out")
+	elif echo "$pub_pkey_out" | grep -q "Public-Key:"; then
+		type="public_key"
+		key_size=$(echo "$pub_pkey_out" | grep "Public-Key:" | awk '{print $2}' | tr -d '()')
+		encryption=$(detect_encryption "$pub_pkey_out")
+	elif [ -n "$x509_out" ]; then
+		type="cert"
+		key_size=$(echo "$x509_out" | grep "Public-Key:" | awk '{print $2}' | tr -d '()')
+		local raw_date
+		raw_date=$(echo "$enddate_out" | cut -d= -f2)
+
+		local month day time year
+		month=$(echo "$raw_date" | awk '{print $1}')
+		case "$month" in
+		Jan) month=01 ;;
+		Feb) month=02 ;;
+		Mar) month=03 ;;
+		Apr) month=04 ;;
+		May) month=05 ;;
+		Jun) month=06 ;;
+		Jul) month=07 ;;
+		Aug) month=08 ;;
+		Sep) month=09 ;;
+		Oct) month=10 ;;
+		Nov) month=11 ;;
+		Dec) month=12 ;;
+		*) month=00 ;;
+		esac
+
+		day=$(echo "$raw_date" | awk '{print $2}')
+		time=$(echo "$raw_date" | awk '{print $3}')
+		year=$(echo "$raw_date" | awk '{print $4}')
+
+		datetime=$(date -u -d "$year-$month-$day $time" +%s 2>/dev/null || echo "-")
+		encryption=$(detect_encryption "$x509_out")
+	elif [ -n "$req_out" ]; then
+		type="req"
+		key_size=$(echo "$req_out" | grep "Public-Key:" | awk '{print $2}' | tr -d '()')
+		encryption=$(detect_encryption "$req_out")
+	else
+		type="-"
+		key_size="-"
+		datetime="-"
+		encryption="-"
+		echo "${type}|${key_size}|${datetime}|${encryption}"
+		return 0
+	fi
+
+	echo "${type}|${key_size}|${datetime}|${encryption}"
+	return 0
+}
+
+add_service_to_config() {
+	local path="$1"
+	local service="$2"
+	local inst="$3"
+	local init="$4"
+	local skip_service="$5"
+	local service_inst="${service}:${inst}"
+
+	if [ -n "$init" ]; then
+		service_inst="${init}@${service_inst}"
+	fi
+
+	local section
+	section=$(uci_show certificates 2>/dev/null | grep "path='${path}'" | cut -d'.' -f2 | cut -d'=' -f1)
+
+	local filename cert_type type key_size datetime encryption
+	filename=$(basename "$path")
+	cert_type="import"
+
+	local result
+	result=$(validate_service "$path") || return 1
+
+	type=$(echo "$result" | cut -d'|' -f1)
+	key_size=$(echo "$result" | cut -d'|' -f2)
+	datetime=$(echo "$result" | cut -d'|' -f3)
+	encryption=$(echo "$result" | cut -d'|' -f4)
+
+	if [ -z "$section" ]; then
+		uci_add certificates certificate
+		section=$CONFIG_SECTION
+		[ -z "$section" ] && return 1
+		
+		uci_set "certificates" "$section" "path" "$path"
+		uci_set "certificates" "$section" "fullname" "$filename"
+		uci_set "certificates" "$section" "cert_type" "$cert_type"
+		uci_set "certificates" "$section" "type" "${type:--}"
+		uci_set "certificates" "$section" "datetime" "${datetime:--}"
+		uci_set "certificates" "$section" "key_size" "${key_size:--}"
+		uci_set "certificates" "$section" "encryption" "${encryption:--}"
+	fi
+
+	if [ -z "$skip_service" ]; then
+		local existing_services service_exists
+		existing_services=$(uci_get certificates "$section" services 2>/dev/null)
+		
+		echo " $existing_services " | grep -q " $service_inst " || uci_add_list "certificates" "$section" "services" "$service_inst"
+	fi
+
+	uci_commit "certificates"
+}
+
+move_cert_file() {
+	local path="$1" service="$2" instance="$3" init="$4"
+	[ -f "$path" ] || return 1
+
+	local filename new_path
+	filename="$(basename "$path")"
+	new_path="$CERT_DIR/$filename"
+
+	mkdir -p "$CERT_DIR" && mv "$path" "$new_path"
+	section=$(uci_show certificates 2>/dev/null | grep "path='${path}'" | cut -d'.' -f2 | cut -d'=' -f1)
+
+	if [ -n "$section" ]; then
+		local value
+		value="$(uci_get "certificates" "$section" "tpm2")"
+		if [ "$value" = "1" ]; then
+			old_hash="$(echo "$path" | sha256sum | awk '{print $1}')"
+			new_hash="$(echo "$new_path" | sha256sum | awk '{print $1}')"
+			mv "/etc/certificates/tpm2/$old_hash" "/etc/certificates/tpm2/$new_hash"
+		fi
+		uci_set "certificates" "$section" "path" "$new_path"
+		uci_commit "certificates"
+	fi
+	add_service_to_config "$new_path" "$service" "$instance" "$init"
+	echo "$new_path"
+}
+
+migrate_single_option() {
+	local config="$1" section="$2" option="$3" service="$4" init="$5"
+	local value new_path
+
+	value="$(uci_get "$config" "$section" "$option")"
+	[ -z "$value" ] && return 0
+	if echo "$value" | grep -q "^$UPLOAD_DIR/"; then
+		new_path="$(move_cert_file "$value" "$service" "$section" "$init")"
+		[ -n "$new_path" ] && uci_set "$config" "$section" "$option" "$new_path"
+	else
+		add_service_to_config "$value" "$service" "$section" "$init"
+	fi
+}
+
+migrate_certificates() {
+	local section="$1"
+	local service="$SERVICE"
+	local init="$INIT"
+
+	[ "$CONFIG" = "uhttpd" ] && [ "$section" != "main" ] && return 0
+	[ "$CONFIG" = "network" ] && [ "$SECTION_TYPE" = "interface" ] && \
+	[ "$(uci_get "$CONFIG" "$section" proto)" != "$SERVICE" ] && return 0
+
+	if [ "$SERVICE" = "azure_iothub" ] && [ "$(uci_get "$CONFIG" "$section" hidden)" = "1" ]; then
+		local ds_id=$(find_azure_data_sender_output "$section")
+		service="data_sender_output-${ds_id}"
+		init="azure_iothub"
+	fi
+
+	migrate_single_option "$CONFIG" "$section" "$OPTION" "$service" "$init" && uci_commit "$CONFIG"
+}
+
+find_azure_data_sender_output(){
+	local azure_id="$1"
+	local res=""
+	check_data_sender_output(){
+		local section="$1"
+		local plugin ubus_object
+		plugin="$(uci_get "data_sender" "$section" "plugin")"
+		ubus_object="$(uci_get "data_sender" "$section" "ubus_object")"
+		if [ "$plugin" = "ubus" ] && [ "$ubus_object" = "azure.${azure_id}" ]; then
+			res="$section"
+		fi
+	}
+	config_load "data_sender"
+	config_foreach check_data_sender_output "output"
+	echo "$res"
+}
+
+configs="
+	azure_iothub azure_iothub x509certificate azure_iothub
+	azure_iothub azure_iothub x509privatekey azure_iothub
+	aws_jobs aws_jobs certfile aws_jobs aws
+	aws_jobs aws_jobs keyfile aws_jobs aws
+	aws_jobs aws_jobs cafile aws_jobs aws
+	aws_jobs aws_provisioning certfile aws_provisioning aws
+	aws_jobs aws_provisioning keyfile aws_provisioning aws
+"
+
+echo "$configs" | while read -r CONFIG SECTION_TYPE OPTION SERVICE INIT; do
+	[ -z "$CONFIG" ] && continue
+	export CONFIG SECTION_TYPE OPTION SERVICE INIT
+	config_load "$CONFIG"
+	config_foreach migrate_certificates "$SECTION_TYPE"
+done
+
+exit 0

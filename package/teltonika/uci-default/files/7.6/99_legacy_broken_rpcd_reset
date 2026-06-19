@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -f "$UCI_CONFIG_DIR/teltonika" ] || exit 0
+
+groups_defined=false
+
+group_cb() {
+	groups_defined=true
+}
+config_load "rpcd"
+config_foreach group_cb "group"
+$groups_defined || cp /rom/etc/config/rpcd "$UCI_CONFIG_DIR/rpcd"
+exit 0

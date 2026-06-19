@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo f >/proc/net/nf_conntrack

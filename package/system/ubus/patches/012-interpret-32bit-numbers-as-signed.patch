@@ -1,0 +1,18 @@
+diff --git a/lua/ubus.c b/lua/ubus.c
+index e307d4f..8df215c 100644
+--- a/lua/ubus.c
++++ b/lua/ubus.c
+@@ -108,7 +108,11 @@ ubus_lua_parse_blob(lua_State *L, struct blob_attr *attr, bool table)
+ 		break;
+ 
+ 	case BLOBMSG_TYPE_INT32:
+-		lua_pushinteger(L, be32_to_cpu(*(uint32_t *)data));
++		// int32 MUST be interpreted as a signed type.
++		// Otherwise most things in vuci API will break, because it's assumed that 32bit numbers are signed.
++		//
++		// Sadly there is no way to distinguish between signed and unsigned numbers in ubus :( 
++		lua_pushinteger(L, (int32_t) be32_to_cpu(*(uint32_t *)data));
+ 		break;
+ 
+ 	case BLOBMSG_TYPE_INT64:
+

@@ -1,0 +1,569 @@
+--- /dev/null
++++ b/docs/modbus_set_broadcasts.md
+@@ -0,0 +1,42 @@
++modbus_set_broadcasts(3)
++===================
++
++
++NAME
++----
++modbus_set_broadcasts - enable or disable broadcasts in the context.
++
++
++SYNOPSIS
++--------
++*int modbus_set_broadcasts(modbus_t *'ctx', int 'enable');*
++
++
++DESCRIPTION
++-----------
++The *modbus_set_broadcasts()* function shall enable or disable broadcasts for the context
++
++The broadcast address is `MODBUS_BROADCAST_ADDRESS`. This special value must be set before sending
++broadcast messages/requests. When enabled, the context will not expect a response from the slave.
++The behavior is oposite when disabled, the context will expect a response from the slave even when slave ID
++is set to `MODBUS_BROADCAST_ADDRESS`.
++
++RETURN VALUE
++------------
++There is no return values.
++
++
++ERRORS
++------
++There is no specific error for this function,
++but it may fail if the context is not properly initialized or if the slave ID is invalid.
++
++
++SEE ALSO
++--------
++linkmb:modbus_set_slave[3]
++
++AUTHORS
++-------
++The libmodbus documentation was written by Stéphane Raimbault
++<stephane.raimbault@gmail.com>
+--- a/docs/modbus_set_slave.md
++++ b/docs/modbus_set_slave.md
+@@ -32,8 +32,7 @@ In **TCP**, the slave number is only req
+ on a serial network. Some not compliant devices or software (such as modpoll)
+ uses the slave ID as unit identifier, that's incorrect (cf page 23 of Modbus
+ Messaging Implementation Guide v1.0b) but without the slave value, the faulty
+-remote device or software drops the requests! The special value
+-`MODBUS_TCP_SLAVE` (0xFF) can be used in TCP mode to restore the default value.
++remote device or software drops the requests!
+ 
+ The broadcast address is `MODBUS_BROADCAST_ADDRESS`. This special value must be
+ use when you want all Modbus devices of the network receive the request.
+--- a/src/modbus-private.h
++++ b/src/modbus-private.h
+@@ -98,6 +98,7 @@ struct _modbus {
+     int slave;
+     /* Socket or file descriptor */
+     int s;
++    int bc; /* Broadcast flag */
+     int debug;
+     int error_recovery;
+     int quirks;
+@@ -111,6 +112,7 @@ struct _modbus {
+ void _modbus_init_common(modbus_t *ctx);
+ void _error_print(modbus_t *ctx, const char *context);
+ int _modbus_receive_msg(modbus_t *ctx, uint8_t *msg, msg_type_t msg_type);
++int _modbus_check_if_broadcast(modbus_t *ctx, int slave, int function);
+ 
+ #ifndef HAVE_STRLCPY
+ size_t strlcpy(char *dest, const char *src, size_t dest_size);
+--- a/src/modbus-rtu-private.h
++++ b/src/modbus-rtu-private.h
+@@ -72,6 +72,8 @@ typedef struct _modbus_rtu {
+ #endif
+     /* To handle many slaves on the same link */
+     int confirmation_to_ignore;
++    /* 0 - None, 1 - HW, 2 - SW */
++    int flowcontrol_mode;
+ } modbus_rtu_t;
+ 
+ #endif /* MODBUS_RTU_PRIVATE_H */
+--- a/src/modbus-rtu.c
++++ b/src/modbus-rtu.c
+@@ -726,6 +726,11 @@ static int _modbus_rtu_connect(modbus_t
+         /* Even */
+         tios.c_cflag |= PARENB;
+         tios.c_cflag &= ~PARODD;
++    } else if (ctx_rtu->parity == 'M') {
++        tios.c_cflag |= PARENB | CMSPAR | PARODD;
++    } else if (ctx_rtu->parity == 'S') {
++        tios.c_cflag |= PARENB | CMSPAR;
++        tios.c_cflag &= ~PARODD;
+     } else {
+         /* Odd */
+         tios.c_cflag |= PARENB;
+@@ -797,7 +802,22 @@ static int _modbus_rtu_connect(modbus_t
+     }
+ 
+     /* Software flow control is disabled */
+-    tios.c_iflag &= ~(IXON | IXOFF | IXANY);
++    // tios.c_iflag &= ~(IXON | IXOFF | IXANY);
++
++    switch (ctx_rtu->flowcontrol_mode)
++    {
++    case MODBUS_RTU_FLOW_CTRL_NONE:
++        break;
++    case MODBUS_RTU_FLOW_CTRL_HW:
++        tios.c_cflag |= CRTSCTS;
++        break;
++    case MODBUS_RTU_FLOW_CTRL_SW:
++        tios.c_iflag |= (IXON | IXOFF);
++        break;
++    default:
++        ctx->s = -1;
++        return -1;
++    }
+ 
+     /* C_OFLAG      Output options
+        OPOST        Postprocess output (not set = raw output)
+@@ -1203,7 +1223,7 @@ const modbus_backend_t _modbus_rtu_backe
+ // clang-format on
+ 
+ modbus_t *
+-modbus_new_rtu(const char *device, int baud, char parity, int data_bit, int stop_bit)
++modbus_new_rtu(const char *device, int baud, char parity, int data_bit, int stop_bit, int flow_ctrl)
+ {
+     modbus_t *ctx;
+     modbus_rtu_t *ctx_rtu;
+@@ -1252,7 +1272,7 @@ modbus_new_rtu(const char *device, int b
+ #endif
+ 
+     ctx_rtu->baud = baud;
+-    if (parity == 'N' || parity == 'E' || parity == 'O') {
++    if (parity == 'N' || parity == 'E' || parity == 'O' || parity == 'M' || parity == 'S') {
+         ctx_rtu->parity = parity;
+     } else {
+         modbus_free(ctx);
+@@ -1261,6 +1281,7 @@ modbus_new_rtu(const char *device, int b
+     }
+     ctx_rtu->data_bit = data_bit;
+     ctx_rtu->stop_bit = stop_bit;
++    ctx_rtu->flowcontrol_mode = flow_ctrl;
+ 
+ #if HAVE_DECL_TIOCSRS485
+     /* The RS232 mode has been set by default */
+--- a/src/modbus-rtu.h
++++ b/src/modbus-rtu.h
+@@ -16,8 +16,12 @@ MODBUS_BEGIN_DECLS
+  */
+ #define MODBUS_RTU_MAX_ADU_LENGTH 256
+ 
++#define MODBUS_RTU_FLOW_CTRL_NONE 0
++#define MODBUS_RTU_FLOW_CTRL_HW	  1
++#define MODBUS_RTU_FLOW_CTRL_SW	  2
++
+ MODBUS_API modbus_t *
+-modbus_new_rtu(const char *device, int baud, char parity, int data_bit, int stop_bit);
++modbus_new_rtu(const char *device, int baud, char parity, int data_bit, int stop_bit, int flow_ctrl);
+ 
+ #define MODBUS_RTU_RS232 0
+ #define MODBUS_RTU_RS485 1
+--- a/src/modbus-tcp.c
++++ b/src/modbus-tcp.c
+@@ -91,10 +91,6 @@ static int _modbus_set_slave(modbus_t *c
+     /* Broadcast address is 0 (MODBUS_BROADCAST_ADDRESS) */
+     if (slave >= 0 && slave <= max_slave) {
+         ctx->slave = slave;
+-    } else if (slave == MODBUS_TCP_SLAVE) {
+-        /* The special value MODBUS_TCP_SLAVE (0xFF) can be used in TCP mode to
+-         * restore the default value. */
+-        ctx->slave = slave;
+     } else {
+         errno = EINVAL;
+         return -1;
+@@ -531,12 +527,11 @@ static int _modbus_tcp_flush(modbus_t *c
+ /* Listens for any request from one or many modbus masters in TCP */
+ int modbus_tcp_listen(modbus_t *ctx, int nb_connection)
+ {
+-    int new_s;
++    int new_s, rc, on = 1;
+     int enable;
+     int flags;
+     struct sockaddr_in addr;
+     modbus_tcp_t *ctx_tcp;
+-    int rc;
+ 
+     if (ctx == NULL) {
+         errno = EINVAL;
+@@ -568,6 +563,12 @@ int modbus_tcp_listen(modbus_t *ctx, int
+         return -1;
+     }
+ 
++    rc = ioctl(new_s, FIONBIO, (char *)&on);
++    if (rc < 0) {
++        close(new_s);
++        return -1;
++    }
++
+     memset(&addr, 0, sizeof(addr));
+     addr.sin_family = AF_INET;
+     /* If the modbus port is < to 1024, we need the setuid root. */
+@@ -909,7 +910,7 @@ modbus_t *modbus_new_tcp(const char *ip,
+     _modbus_init_common(ctx);
+ 
+     /* Could be changed after to reach a remote serial Modbus device */
+-    ctx->slave = MODBUS_TCP_SLAVE;
++    ctx->slave = 0x01;
+ 
+     ctx->backend = &_modbus_tcp_backend;
+ 
+@@ -958,7 +959,7 @@ modbus_t *modbus_new_tcp_pi(const char *
+     _modbus_init_common(ctx);
+ 
+     /* Could be changed after to reach a remote serial Modbus device */
+-    ctx->slave = MODBUS_TCP_SLAVE;
++    ctx->slave = 0x01;
+ 
+     ctx->backend = &_modbus_tcp_pi_backend;
+ 
+--- a/src/modbus-tcp.h
++++ b/src/modbus-tcp.h
+@@ -32,7 +32,6 @@ MODBUS_BEGIN_DECLS
+ #endif
+ 
+ #define MODBUS_TCP_DEFAULT_PORT 502
+-#define MODBUS_TCP_SLAVE        0xFF
+ 
+ /* Modbus_Application_Protocol_V1_1b.pdf Chapter 4 Section 1 Page 5
+  * TCP MODBUS ADU = 253 bytes + MBAP (7 bytes) = 260 bytes
+--- a/src/modbus.c
++++ b/src/modbus.c
+@@ -51,11 +51,11 @@ const char *modbus_strerror(int errnum)
+     case EMBXILVAL:
+         return "Illegal data value";
+     case EMBXSFAIL:
+-        return "Slave device or server failure";
++        return "Device or server failure";
+     case EMBXACK:
+         return "Acknowledge";
+     case EMBXSBUSY:
+-        return "Slave device or server is busy";
++        return "Device or server is busy";
+     case EMBXNACK:
+         return "Negative acknowledge";
+     case EMBXMEMPAR:
+@@ -773,6 +773,54 @@ static int response_exception(modbus_t *
+     return rsp_length;
+ }
+ 
++int modbus_raw_reply(modbus_t *ctx, const uint8_t *req,
++		int req_length, const uint8_t *raw_rsp,
++		     int raw_rsp_length)
++{
++	int rsp_length;
++	sft_t sft;
++	uint8_t rsp[MAX_MESSAGE_LENGTH] = { 0 };
++
++	if (!ctx) {
++		errno = EINVAL;
++		return -1;
++	}
++
++	sft.slave    = raw_rsp[0];
++	sft.function = raw_rsp[1];
++	sft.t_id     = ctx->backend->get_response_tid(req); req_length -= ctx->backend->checksum_length;
++	rsp_length   = ctx->backend->build_response_basis(&sft, rsp);
++
++    switch(sft.function) {
++        case MODBUS_FC_READ_COILS:
++        case MODBUS_FC_READ_DISCRETE_INPUTS:
++        case MODBUS_FC_READ_INPUT_REGISTERS:
++        case MODBUS_FC_READ_HOLDING_REGISTERS:
++            if (raw_rsp_length > 2) {
++                /* Copy data after function code */
++                memcpy(rsp + rsp_length, raw_rsp + 2, raw_rsp_length - 2);
++                rsp_length += raw_rsp_length - 2;
++            }
++            break;
++        case MODBUS_FC_WRITE_SINGLE_COIL:
++        case MODBUS_FC_WRITE_SINGLE_REGISTER:
++            if (raw_rsp_length > 2) {
++                memcpy(rsp + rsp_length, raw_rsp + 2, raw_rsp_length - 2);
++                rsp_length = req_length;
++            }
++            break;
++        case MODBUS_FC_WRITE_MULTIPLE_COILS:
++        case MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
++            if (raw_rsp_length > 2) {
++                memcpy(rsp + rsp_length, raw_rsp + 2, raw_rsp_length - 2);
++                rsp_length += 4;
++            }
++        break;
++    }
++
++    return _modbus_check_if_broadcast(ctx, sft.slave, sft.function) ? 0 : send_msg(ctx, rsp, rsp_length);
++}
++
+ /* Send a response to the received request.
+    Analyses the request and constructs a response.
+ 
+@@ -1184,9 +1232,7 @@ int modbus_reply(modbus_t *ctx,
+ 
+     /* Suppress any responses in RTU when the request was a broadcast, excepted when
+      * quirk is enabled. */
+-    if (ctx->backend->backend_type == _MODBUS_BACKEND_TYPE_RTU &&
+-        slave == MODBUS_BROADCAST_ADDRESS &&
+-        !(ctx->quirks & MODBUS_QUIRK_REPLY_TO_BROADCAST)) {
++    if (_modbus_check_if_broadcast(ctx, slave, function) && !(ctx->quirks & MODBUS_QUIRK_REPLY_TO_BROADCAST)) {
+         return 0;
+     }
+     return send_msg(ctx, rsp, rsp_length);
+@@ -1217,8 +1263,8 @@ int modbus_reply_exception(modbus_t *ctx
+ 
+     /* Positive exception code */
+     if (exception_code < MODBUS_EXCEPTION_MAX) {
+-        rsp[rsp_length++] = exception_code;
+-        return send_msg(ctx, rsp, rsp_length);
++	rsp[rsp_length++] = exception_code;
++	return _modbus_check_if_broadcast(ctx, slave, function) ? 0 : send_msg(ctx, rsp, rsp_length);
+     } else {
+         errno = EINVAL;
+         return -1;
+@@ -1238,7 +1284,6 @@ static int read_io_status(modbus_t *ctx,
+ 
+     rc = send_msg(ctx, req, req_length);
+     if (rc > 0) {
+-        int temp, bit;
+         int pos = 0;
+         unsigned int offset;
+         unsigned int offset_end;
+@@ -1255,13 +1300,7 @@ static int read_io_status(modbus_t *ctx,
+         offset = ctx->backend->header_length + 2;
+         offset_end = offset + rc;
+         for (i = offset; i < offset_end; i++) {
+-            /* Shift reg hi_byte to temp */
+-            temp = rsp[i];
+-
+-            for (bit = 0x01; (bit & 0xff) && (pos < nb);) {
+-                dest[pos++] = (temp & bit) ? TRUE : FALSE;
+-                bit = bit << 1;
+-            }
++            dest[pos++] = rsp[i];
+         }
+     }
+ 
+@@ -1328,7 +1367,7 @@ int modbus_read_input_bits(modbus_t *ctx
+ }
+ 
+ /* Reads the data from a remote device and put that data into an array */
+-static int read_registers(modbus_t *ctx, int function, int addr, int nb, uint16_t *dest)
++static int read_registers(modbus_t *ctx, int function, int addr, int nb, uint8_t *dest)
+ {
+     int rc;
+     int req_length;
+@@ -1363,9 +1402,9 @@ static int read_registers(modbus_t *ctx,
+ 
+         offset = ctx->backend->header_length;
+ 
+-        for (i = 0; i < rc; i++) {
+-            /* shift reg hi_byte to temp OR with lo_byte */
+-            dest[i] = (rsp[offset + 2 + (i << 1)] << 8) | rsp[offset + 3 + (i << 1)];
++        for (i = 0; i < rc * 2; i++) {
++             /* shift reg hi_byte to temp OR with lo_byte */
++            dest[i] = rsp[offset + 2 + i];
+         }
+     }
+ 
+@@ -1374,7 +1413,7 @@ static int read_registers(modbus_t *ctx,
+ 
+ /* Reads the holding registers of remote device and put the data into an
+    array */
+-int modbus_read_registers(modbus_t *ctx, int addr, int nb, uint16_t *dest)
++int modbus_read_registers(modbus_t *ctx, int addr, int nb, uint8_t *dest)
+ {
+     int status;
+ 
+@@ -1399,7 +1438,7 @@ int modbus_read_registers(modbus_t *ctx,
+ }
+ 
+ /* Reads the input registers of remote device and put the data into an array */
+-int modbus_read_input_registers(modbus_t *ctx, int addr, int nb, uint16_t *dest)
++int modbus_read_input_registers(modbus_t *ctx, int addr, int nb, uint8_t *dest)
+ {
+     int status;
+ 
+@@ -1444,6 +1483,11 @@ static int write_single(modbus_t *ctx, i
+         /* Used by write_bit and write_register */
+         uint8_t rsp[MAX_MESSAGE_LENGTH];
+ 
++	if (_modbus_check_if_broadcast(ctx, ctx->slave, function)) {
++	    /* If the request is a broadcast, no response is expected */
++	    return 0;
++	}
++
+         rc = _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
+         if (rc == -1)
+             return -1;
+@@ -1477,7 +1521,60 @@ int modbus_write_register(modbus_t *ctx,
+ }
+ 
+ /* Write the bits of the array in the remote device */
+-int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint8_t *src)
++int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint16_t *src)
++{
++    int rc;
++    int i;
++    int byte_count;
++    int req_length;
++    uint8_t req[MAX_MESSAGE_LENGTH];
++
++    if (ctx == NULL) {
++        errno = EINVAL;
++        return -1;
++    }
++
++    if (nb > MODBUS_MAX_WRITE_BITS) {
++        if (ctx->debug) {
++            fprintf(stderr, "ERROR Writing too many bits (%d > %d)\n",
++                    nb, MODBUS_MAX_WRITE_BITS);
++        }
++        errno = EMBMDATA;
++        return -1;
++    }
++
++    req_length = ctx->backend->build_request_basis(ctx,
++                                                   MODBUS_FC_WRITE_MULTIPLE_COILS,
++                                                   addr, nb, req);
++    byte_count = (nb / 8) + ((nb % 8) ? 1 : 0);
++    req[req_length++] = byte_count;
++
++    for (i = 0; i < byte_count; i++) {
++        req[req_length++] = (uint8_t)src[i];
++    }
++
++    rc = send_msg(ctx, req, req_length);
++    if (rc > 0) {
++        uint8_t rsp[MAX_MESSAGE_LENGTH];
++
++	if (_modbus_check_if_broadcast(ctx, ctx->slave, MODBUS_FC_WRITE_MULTIPLE_COILS)) {
++	    /* If the request is a broadcast, no response is expected */
++	    return 0;
++	}
++
++        rc = _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
++        if (rc == -1)
++            return -1;
++
++        rc = check_confirmation(ctx, req, rsp, rc);
++    }
++
++
++    return rc;
++}
++
++/* Write the bits of the array in the remote device. Original function */
++int modbus_write_bits_2(modbus_t *ctx, int addr, int nb, const uint8_t *src)
+ {
+     int rc;
+     int i;
+@@ -1578,6 +1675,11 @@ int modbus_write_registers(modbus_t *ctx
+     if (rc > 0) {
+         uint8_t rsp[MAX_MESSAGE_LENGTH];
+ 
++	if (_modbus_check_if_broadcast(ctx, ctx->slave, MODBUS_FC_WRITE_MULTIPLE_REGISTERS)) {
++	    /* If the request is a broadcast, no response is expected */
++	    return 0;
++	}
++
+         rc = _modbus_receive_msg(ctx, rsp, MSG_CONFIRMATION);
+         if (rc == -1)
+             return -1;
+@@ -1757,10 +1859,11 @@ void _modbus_init_common(modbus_t *ctx)
+     /* Slave and socket are initialized to -1 */
+     ctx->slave = -1;
+     ctx->s = -1;
++    ctx->bc = 1; /* Broadcast is enabled by default */
+ 
+     ctx->debug = FALSE;
+     ctx->error_recovery = MODBUS_ERROR_RECOVERY_NONE;
+-    ctx->quirks = MODBUS_QUIRK_NONE;
++    ctx->quirks = MODBUS_QUIRK_MAX_SLAVE;
+ 
+     ctx->response_timeout.tv_sec = 0;
+     ctx->response_timeout.tv_usec = _RESPONSE_TIMEOUT;
+@@ -2088,6 +2191,16 @@ void modbus_mapping_free(modbus_mapping_
+     free(mb_mapping);
+ }
+ 
++void modbus_set_broadcasts(modbus_t *ctx, int enable)
++{
++    if (ctx == NULL) {
++	errno = EINVAL;
++	return;
++    }
++
++    ctx->bc = !!enable;
++}
++
+ #ifndef HAVE_STRLCPY
+ /*
+  * Function strlcpy was originally developed by
+@@ -2126,3 +2239,24 @@ size_t strlcpy(char *dest, const char *s
+     return (s - src - 1); /* count does not include NUL */
+ }
+ #endif
++
++int _modbus_check_if_broadcast(modbus_t *ctx, int slave, int function)
++{
++    if (ctx->bc &&
++	slave == MODBUS_BROADCAST_ADDRESS &&
++	(function == MODBUS_FC_WRITE_SINGLE_COIL ||
++	function == MODBUS_FC_WRITE_MULTIPLE_COILS ||
++	function == MODBUS_FC_WRITE_SINGLE_REGISTER ||
++	function == MODBUS_FC_WRITE_MULTIPLE_REGISTERS ||
++	function == MODBUS_FC_MASK_WRITE_REGISTER ||
++	function == MODBUS_FC_WRITE_AND_READ_REGISTERS)) {
++
++	if (ctx->debug) {
++	    printf("Broadcast request, no response expected.\n");
++	}
++
++	return 1;
++    }
++
++    return 0;
++}
+--- a/src/modbus.h
++++ b/src/modbus.h
+@@ -223,12 +223,12 @@ MODBUS_API const char *modbus_strerror(i
+ 
+ MODBUS_API int modbus_read_bits(modbus_t *ctx, int addr, int nb, uint8_t *dest);
+ MODBUS_API int modbus_read_input_bits(modbus_t *ctx, int addr, int nb, uint8_t *dest);
+-MODBUS_API int modbus_read_registers(modbus_t *ctx, int addr, int nb, uint16_t *dest);
+-MODBUS_API int
+-modbus_read_input_registers(modbus_t *ctx, int addr, int nb, uint16_t *dest);
++MODBUS_API int modbus_read_registers(modbus_t *ctx, int addr, int nb, uint8_t *dest);
++MODBUS_API int modbus_read_input_registers(modbus_t *ctx, int addr, int nb, uint8_t *dest);
+ MODBUS_API int modbus_write_bit(modbus_t *ctx, int coil_addr, int status);
+ MODBUS_API int modbus_write_register(modbus_t *ctx, int reg_addr, const uint16_t value);
+-MODBUS_API int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint8_t *data);
++MODBUS_API int modbus_write_bits(modbus_t *ctx, int addr, int nb, const uint16_t *data);
++MODBUS_API int modbus_write_bits_2(modbus_t *ctx, int addr, int nb, const uint8_t *data);
+ MODBUS_API int
+ modbus_write_registers(modbus_t *ctx, int addr, int nb, const uint16_t *data);
+ MODBUS_API int
+@@ -276,6 +276,9 @@ MODBUS_API int modbus_reply(modbus_t *ct
+                             modbus_mapping_t *mb_mapping);
+ MODBUS_API int
+ modbus_reply_exception(modbus_t *ctx, const uint8_t *req, unsigned int exception_code);
++MODBUS_API int modbus_raw_reply(modbus_t *ctx, const uint8_t *req,
++                                int req_length, const uint8_t *raw_rsp,
++                                int raw_rsp_lenght);
+ MODBUS_API int modbus_enable_quirks(modbus_t *ctx, unsigned int quirks_mask);
+ MODBUS_API int modbus_disable_quirks(modbus_t *ctx, unsigned int quirks_mask);
+ 
+@@ -330,6 +333,8 @@ MODBUS_API void modbus_set_float_dcba(fl
+ MODBUS_API void modbus_set_float_badc(float f, uint16_t *dest);
+ MODBUS_API void modbus_set_float_cdab(float f, uint16_t *dest);
+ 
++MODBUS_API void modbus_set_broadcasts(modbus_t *ctx, int enable);
++
+ #include "modbus-rtu.h"
+ #include "modbus-tcp.h"
+ 

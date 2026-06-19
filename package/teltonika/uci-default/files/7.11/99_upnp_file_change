@@ -1,0 +1,5 @@
+#!/bin/sh
+[ -f "$UCI_CONFIG_DIR/firewall" ] || exit 0
+
+sed -i "s|/usr/share/miniupnpd/firewall.include|/usr/local/share/miniupnpd/firewall.include|g" "$UCI_CONFIG_DIR/firewall"
+exit 0

@@ -1,0 +1,94 @@
+Add nf_conn_flow conntrack extension. Used by nf_flow_table to tack flow_offload
+struct to related nf_conn.
+
+--- a/include/net/netfilter/nf_conntrack_extend.h
++++ b/include/net/netfilter/nf_conntrack_extend.h
+@@ -28,6 +28,7 @@ enum nf_ct_ext_id {
+ #if IS_ENABLED(CONFIG_NETFILTER_SYNPROXY)
+ 	NF_CT_EXT_SYNPROXY,
+ #endif
++	NF_CT_EXT_FLOW_OFFLOAD,
+ 	NF_CT_EXT_NUM,
+ };
+ 
+@@ -40,6 +41,7 @@ enum nf_ct_ext_id {
+ #define NF_CT_EXT_TIMEOUT_TYPE struct nf_conn_timeout
+ #define NF_CT_EXT_LABELS_TYPE struct nf_conn_labels
+ #define NF_CT_EXT_SYNPROXY_TYPE struct nf_conn_synproxy
++#define NF_CT_EXT_FLOW_OFFLOAD_TYPE struct nf_conn_flow
+ 
+ /* Extensions: optional stuff which isn't permanently in struct. */
+ struct nf_ct_ext {
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -12,6 +12,7 @@
+ #include <net/dst.h>
+ #include <linux/if_pppox.h>
+ #include <linux/ppp_defs.h>
++#include <net/netfilter/nf_conntrack_extend.h>
+ 
+ struct nf_flowtable;
+ struct nf_flow_rule;
+@@ -209,6 +210,30 @@ struct nf_flow_route {
+ 	} tuple[FLOW_OFFLOAD_DIR_MAX];
+ };
+ 
++struct nf_conn_flow {
++	struct flow_offload __rcu *flow;
++};
++
++static inline struct nf_conn_flow *nf_ct_flow_ext_find(struct nf_conn *ct)
++{
++	return nf_ct_ext_find(ct, NF_CT_EXT_FLOW_OFFLOAD);
++}
++
++static inline struct nf_conn_flow *nf_ct_flow_ext_add(struct nf_conn *ct)
++{
++	struct nf_conn_flow *flow_ext;
++
++	if (nf_ct_is_confirmed(ct))
++		return NULL;
++
++	flow_ext = nf_ct_ext_add(ct, NF_CT_EXT_FLOW_OFFLOAD, GFP_ATOMIC);
++	if (!flow_ext)
++		return NULL;
++
++	RCU_INIT_POINTER(flow_ext->flow, NULL);
++	return flow_ext;
++}
++
+ struct flow_offload *flow_offload_alloc(struct nf_conn *ct);
+ void flow_offload_free(struct flow_offload *flow);
+ 
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -670,6 +670,12 @@ static struct pernet_operations nf_flow_
+ 	.exit_batch = nf_flow_table_pernet_exit,
+ };
+ 
++static struct nf_ct_ext_type nf_flow_ct_extend __read_mostly = {
++	.len		= sizeof(struct nf_conn_flow),
++	.align		= __alignof__(struct nf_conn_flow),
++	.id		= NF_CT_EXT_FLOW_OFFLOAD,
++};
++
+ static int __init nf_flow_table_module_init(void)
+ {
+ 	int ret;
+@@ -686,6 +692,8 @@ static int __init nf_flow_table_module_i
+ 	if (ret)
+ 		nf_flow_table_offload_exit();
+ 
++	ret = nf_ct_extend_register(&nf_flow_ct_extend);
++
+ 	return ret;
+ 
+ out_offload:
+@@ -695,6 +703,7 @@ out_offload:
+ 
+ static void __exit nf_flow_table_module_exit(void)
+ {
++	nf_ct_extend_unregister(&nf_flow_ct_extend);
+ 	unregister_netdevice_notifier(&flow_offload_netdev_notifier);
+ 	nf_flow_table_offload_exit();
+ 	unregister_pernet_subsys(&nf_flow_table_net_ops);

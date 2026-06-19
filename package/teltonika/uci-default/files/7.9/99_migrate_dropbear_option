@@ -1,0 +1,9 @@
+#!/bin/sh
+. /lib/functions.sh
+
+if [ "$(uci_get "dropbear" "@dropbear[0]" "RootPasswordAuth")" = "on" ]; then
+	uci_set "dropbear" "@dropbear[0]" "RootPasswordAuth" "1"
+	uci_commit dropbear
+fi
+
+exit 0

@@ -1,0 +1,71 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="template">
+            <div class="template__body">
+                <div class="template__picture">
+                    <%include("logo")%>
+                    <h1 class="template__title"><%=var.text.form.picture_title%></h1>
+                </div>
+                <div class="template__panel">
+                    <div class="template__panel-content">
+                        <h2 class="template__panel-title"><%=var.text.form.nav_login%></h2>
+                        <h3 class="template__panel-subtitle"><%=var.text.form.msg_title%></h3>
+                        <p class="template__panel-text"><%=var.text.form.msg_content%></p>
+                        <div class="template__form-wrapper">
+                            <form class="template__form" action="javascript:void(0);">
+                                <input type="hidden" name="challenge" value="<%=challenge%>">
+                                <input type="hidden" name="uamip" value="<%=uamip%>">
+                                <input type="hidden" name="uamport" value="<%=uamport%>">
+                                <input type="hidden" name="userurl" value="<%=userurl%>">
+                                <%- if tos then -%>
+                                    <div class="template__form-item template__form-item--row">
+                                        <input class="template__form-checkbox" name="agreetos" id="agreetos" type="checkbox" value="1" required>
+                                        <span class="template__checkbox-text"><%=var.text.tos.prefix%></span>
+                                        <a target="_blank" href="tos"><%=var.text.tos.title%></a>
+                                    </div>
+                                <%- end -%>
+                                <%- if trial then -%>
+                                    <p class="template__panel-text">
+                                        <a id="trial_link" href="#"><%=var.text.other.link%></a>
+                                        <span class="template__checkbox-text"><%=var.text.other.trial_suffix%></span>
+                                    </p>
+                                <%- end -%>
+                                <%- if res == "failed" then %>
+                                <p class="template__form-error">
+                                    <% if reason then %>
+                                        <% if reason == "data_limit" then %>
+                                            <%=var.text.error.data_limit%>
+                                        <% elseif reason == "time_limit" then %>
+                                            <%=var.text.error.time_limit%>
+                                        <% elseif reason == "tos" then %>
+                                            <%=var.text.error.tos%>
+                                        <% elseif reason == "time_limit_trial" then %>
+                                            <%=var.text.error.time_limit_trial%>
+                                        <% elseif reason == "data_limit_trial" then %>
+                                            <%=var.text.error.data_limit_trial%>
+                                        <% elseif reason == "sso_fail" then %>
+                                            <%=var.text.error.sso_fail%>
+                                        <%else%>
+                                            <%=var.text.error.default%>
+                                        <% end %>
+                                    <% else %>
+                                        <%=var.text.error.default%>
+                                    <% end %>
+                                </p>
+                                <%-elseif termcause then-%>
+                                    <p class="template__form-error">
+                                        <% if termcause =="14" then%>
+                                            <%=var.text.error.data_limit%>
+                                        <%end%>
+                                    </p>
+                                <%end%>
+                                <button class="template__form-button" type="submit"><%=var.text.button.login%></button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

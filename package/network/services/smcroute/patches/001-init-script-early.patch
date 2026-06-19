@@ -1,0 +1,19 @@
+--- a/src/smcrouted.c
++++ b/src/smcrouted.c
+@@ -139,7 +139,6 @@ static void server_exit(void *arg)
+ 
+ static int server_loop(void)
+ {
+-	script_init(script);
+ 	mrdisc_init(interval);
+ 
+ 	while (running) {
+@@ -218,6 +217,8 @@ static int start_server(void)
+ 	mcgroup_init();
+ 	ipc_init(sock_file);
+ 
++	/* Init script before applying config*/
++	script_init(script);
+ 	conf_read(conf_file, do_vifs);
+ 
+ 	/* Everything setup, notify any clients waiting for us */

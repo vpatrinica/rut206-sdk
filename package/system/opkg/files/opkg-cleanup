@@ -1,0 +1,81 @@
+#!/bin/sh
+
+OVERLAY_DIR="/usr/local"
+DEFAULT_IPK_DIR="/tmp/run/opkg/custom_package"
+
+log() {
+    logger "opkg-cleanup.sh: $1"
+}
+
+usage() {
+    echo "Usage: $0 [-h] -d <IPK_DIRECTORY> -p <PACKAGE_NAME>"
+    exit 1
+}
+
+if [ $# = 0 ]; then
+    usage
+fi
+
+while getopts "hd:p:" o; do
+    case "${o}" in
+        h)
+            usage
+        ;;
+        d)
+            TEMPDIR="${OPTARG}"
+        ;;
+        p)
+            PKG_NAME="${OPTARG}"
+        ;;
+        *)
+            usage
+        ;;
+    esac
+done
+
+[ -z "$TEMPDIR" ] || [ -z "$PKG_NAME" ] && usage
+
+[ ! -d "$TEMPDIR" ] && {
+    log "IPK directory '$TEMPDIR' does not exist"
+    [ -d "$DEFAULT_IPK_DIR" ] || {
+        exit 1
+    }
+
+    log "Using default IPK directory '$DEFAULT_IPK_DIR'"
+    TEMPDIR="$DEFAULT_IPK_DIR"
+}
+
+PACKAGE_FILE_NAME=$(find "$TEMPDIR" -name "${PKG_NAME}_*.ipk")
+[ -z "$PACKAGE_FILE_NAME" ] && {
+    log "Package file for package '$PKG_NAME' not found in directory '$TEMPDIR'"
+    exit 1
+}
+
+PACKAGE_FILES=$(< "$PACKAGE_FILE_NAME" tar -Oxz ./data.tar.gz | tar -tz | grep -vE '^\./$' | sort -r | sed 's/^\.//')
+OPKG_STATUS_FILE="${OVERLAY_DIR}/lib/opkg/status"
+OPKG_STATUS_TMP_FILE="/tmp/tmp_status.txt"
+
+for PACKAGE_FILE in $PACKAGE_FILES
+do
+    PACKAGE_FILE="${OVERLAY_DIR}${PACKAGE_FILE}"
+    if [ -f "$PACKAGE_FILE" ] || [ -L "$PACKAGE_FILE" ]
+    then
+        log "removing file: '$PACKAGE_FILE'"
+        rm -f "$PACKAGE_FILE"
+    fi
+    if [ -d "$PACKAGE_FILE" ]
+    then
+        log "removing dir: '$PACKAGE_FILE'"
+        rmdir "$PACKAGE_FILE"
+    fi
+done
+
+CONTROL_FILES=$(ls "${OVERLAY_DIR}/lib/opkg/info/$PKG_NAME"* 2> /dev/null || true)
+for CONTROL_FILE in $CONTROL_FILES
+do
+    log "removing control file: '$CONTROL_FILE'"
+    rm "$CONTROL_FILE"
+done
+
+awk '!/^Package: '"$PKG_NAME"'/' RS= ORS='\n\n' $OPKG_STATUS_FILE > $OPKG_STATUS_TMP_FILE
+mv $OPKG_STATUS_TMP_FILE $OPKG_STATUS_FILE

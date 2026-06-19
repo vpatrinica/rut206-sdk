@@ -1,0 +1,90 @@
+{
+    "name": "Coffee shop theme",
+    "background_color": "",
+    "form": {
+        "input_fill_color": "ffffff",
+        "input_border_color": "6c757d",
+        "background_color": "ffffff"
+    },
+    "font": {
+        "family": "Oswald",
+        "title_size": "50",
+        "subtitle_size": "42",
+        "body_size": "20",
+        "label_size": "20"
+    },
+    "primary_color": "0054a6",
+    "secondary_color": "20293a",
+    "button": {
+        "color": "0054a6",
+        "text_color": "ffffff"
+    },
+    "banner": {
+        "font_color": "ffffff",
+        "font_size": "66"
+    },
+    "text": {
+        "form": {
+            "page_title": "Hotspot landing page",
+            "access_denied": "Access Denied",
+            "access_denied_message": "Login must be performed through hotspot daemon.",
+            "picture_title": "Hotspot",
+            "nav_login": "Login",
+            "nav_register": "Register",
+            "msg_title": "Welcome To RutOS!",
+            "msg_content": "Thank you for using Teltonika RutOS hotspot services!",
+            "msg_no_account": "Don't have an account?",
+            "msg_have_account": "Already have an account?"
+        },
+        "error": {
+            "default": "Please try again",
+            "data_limit": "Data limit has been reached.",
+            "time_limit": "Time limit has been reached.",
+            "tos": "Please indicate that you have read and agree to the Terms of Service",
+            "time_limit_trial": "Trial time limit has been reached.",
+            "data_limit_trial": "Trial data limit has been reached.",
+            "user_duplicate": "Duplicate passwords are not allowed.",
+            "sso_fail": "Failed to login.",
+            "reject": "Invalid username and/or password! Please try again.",
+            "reject_password": "Invalid password! Please try again.",
+            "already": "You already registered and user has not expired yet.",
+            "already_otp": "You already created one time password and it has not expired yet.",
+            "sms": "Something went wrong while sending SMS message.",
+            "denied": "Signup method is not allowed",
+            "form": "Please fill in all required fields.",
+            "password_mismatch": "Passwords do not match!"
+        },
+        "success": {
+            "register": "Registration successfully completed.",
+            "authorize": "Authorization successful!"
+        },
+        "field": {
+            "username": "Username",
+            "password": "Password",
+            "confirm_password": "Confirm Password",
+            "phone": "Phone Number",
+            "email": "Email"
+        },
+        "button": {
+            "login": "Log In",
+            "register": "Register",
+            "back": "Back"
+        },
+        "tos": {
+            "prefix": "I agree to the",
+            "title": "Terms of Service",
+            "message": "Please read these terms of service and all referenced materials carefully before using Hotspot.",
+            "agreement": "By accessing and using the Hotspot service in any way, you agree to be bound by this agreement. If you do not agree to the terms, please leave the AP immediately do not use this Hotspot service."
+        },
+        "other": {
+            "link": "Click here",
+            "trial_suffix": "for trial access",
+            "logout_suffix": "to logout"
+        },
+        "signup": {
+            "prefix": "If you already have a password click",
+            "link": "here",
+            "suffix": "to login"
+        }
+    }
+}

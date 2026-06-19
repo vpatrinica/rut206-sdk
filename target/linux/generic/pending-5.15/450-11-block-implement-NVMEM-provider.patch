@@ -1,0 +1,46 @@
+From b9936aa8a3775c2027f655d91a206d0e6e1c7ec0 Mon Sep 17 00:00:00 2001
+From: Daniel Golle <daniel@makrotopia.org>
+Date: Tue, 11 Jul 2023 00:17:31 +0100
+Subject: [PATCH 11/15] block: implement NVMEM provider
+
+On embedded devices using an eMMC it is common that one or more partitions
+on the eMMC are used to store MAC addresses and Wi-Fi calibration EEPROM
+data. Allow referencing the partition in device tree for the kernel and
+Wi-Fi drivers accessing it via the NVMEM layer.
+
+Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+---
+ block/Kconfig     |   9 +++
+ block/Makefile    |   1 +
+ block/blk-nvmem.c | 186 ++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 196 insertions(+)
+ create mode 100644 block/blk-nvmem.c
+
+--- a/block/Kconfig
++++ b/block/Kconfig
+@@ -202,6 +202,15 @@ config BLK_INLINE_ENCRYPTION_FALLBACK
+ 
+ menu "Partition Types"
+ 
++config BLK_NVMEM
++	bool "Block device NVMEM provider"
++	depends on OF
++	depends on NVMEM
++	help
++	  Allow block devices (or partitions) to act as NVMEM prodivers,
++	  typically used with eMMC to store MAC addresses or Wi-Fi
++	  calibration data on embedded devices.
++
+ source "block/partitions/Kconfig"
+ 
+ endmenu
+--- a/block/Makefile
++++ b/block/Makefile
+@@ -34,6 +34,7 @@ obj-$(CONFIG_BLK_DEV_ZONED)	+= blk-zoned
+ obj-$(CONFIG_BLK_WBT)		+= blk-wbt.o
+ obj-$(CONFIG_BLK_DEBUG_FS)	+= blk-mq-debugfs.o
+ obj-$(CONFIG_BLK_DEBUG_FS_ZONED)+= blk-mq-debugfs-zoned.o
++obj-$(CONFIG_BLK_NVMEM)		+= blk-nvmem.o
+ obj-$(CONFIG_BLK_SED_OPAL)	+= sed-opal.o
+ obj-$(CONFIG_BLK_PM)		+= blk-pm.o
+ obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= keyslot-manager.o blk-crypto.o

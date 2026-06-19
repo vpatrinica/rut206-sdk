@@ -1,0 +1,9 @@
+{
+	"user": "rpcd",
+	"access": {
+		"ulogd": {
+			"methods": ["generate_key", "upload_key"]
+		}
+	},
+	"publish": ["ulogd"]
+}

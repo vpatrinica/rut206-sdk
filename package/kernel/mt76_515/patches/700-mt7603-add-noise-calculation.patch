@@ -1,0 +1,113 @@
+Index: mt76_515-2023-09-18-2afc7285/mt7603/mac.c
+===================================================================
+--- mt76_515-2023-09-18-2afc7285.orig/mt7603/mac.c
++++ mt76_515-2023-09-18-2afc7285/mt7603/mac.c
+@@ -519,6 +519,7 @@ mt7603_mac_fill_rx(struct mt7603_dev *de
+ 	bool remove_pad;
+ 	int idx;
+ 	int i;
++	int raw_snr;
+ 
+ 	memset(status, 0, sizeof(*status));
+ 
+@@ -656,6 +657,13 @@ mt7603_mac_fill_rx(struct mt7603_dev *de
+ 		status->chain_signal[1] = FIELD_GET(MT_RXV4_IB_RSSI1, rxdg3) +
+ 					  dev->rssi_offset[1];
+ 
++		status->signal = mt76_rx_signal(status->chains, status->chain_signal);
++
++		if (!dev->snr) {
++			raw_snr = FIELD_GET(MT_RXV5_LTF_SNR0, rxdg3);
++			dev->snr = ((0xeb - raw_snr) * 3) /	16;
++		}
++
+ 		if (FIELD_GET(MT_RXV1_FRAME_MODE, rxdg0) == 1)
+ 			status->bw = RATE_INFO_BW_40;
+ 
+@@ -1618,6 +1626,65 @@ trigger:
+ 	return true;
+ }
+ 
++int mt7603_get_avg_rssi(struct mt76_dev *dev)
++{
++	struct mt76_wcid *wcid;
++	int total_rssi = 0;
++	int active_count = 0;
++	int i, j;
++	u32 mask, phy_mask;
++
++	local_bh_disable();
++	rcu_read_lock();
++	for (i = 0; i < ARRAY_SIZE(dev->wcid_mask); i++) {
++		mask = dev->wcid_mask[i];
++		phy_mask = dev->wcid_phy_mask[i];
++
++		if (!mask)
++			continue;
++
++		for (j = i * 32; mask; j++, mask >>= 1, phy_mask >>= 1) {
++			if (!(mask & 1))
++				continue;
++
++			if (!!(phy_mask & 1) != 0)
++				continue;
++
++			wcid = rcu_dereference(dev->wcid[j]);
++			if (!wcid)
++ 				continue;
++
++			spin_lock(&dev->rx_lock);
++			total_rssi += -ewma_signal_read(&wcid->rssi);
++			spin_unlock(&dev->rx_lock);
++
++			active_count++;
++		}
++	}
++	rcu_read_unlock();
++	local_bh_enable();
++
++	if (!active_count)
++		return 0;
++
++	return total_rssi / active_count;
++}
++
++int mt7603_get_noise(struct mt7603_dev *dev)
++{
++	int snr, avg_rssi, noise;
++
++	avg_rssi = mt7603_get_avg_rssi(&dev->mt76);
++
++	if(!avg_rssi)
++		return 0;
++
++	snr = dev->snr;
++	noise = max(avg_rssi - snr, -127);
++
++	return noise;
++}
++
+ void mt7603_update_channel(struct mt76_phy *mphy)
+ {
+ 	struct mt7603_dev *dev = container_of(mphy->dev, struct mt7603_dev, mt76);
+@@ -1625,6 +1692,7 @@ void mt7603_update_channel(struct mt76_p
+ 
+ 	state = mphy->chan_state;
+ 	state->cc_busy += mt76_rr(dev, MT_MIB_STAT_CCA);
++	state->noise = mt7603_get_noise(dev);
+ }
+ 
+ void
+Index: mt76_515-2023-09-18-2afc7285/mt7603/mt7603.h
+===================================================================
+--- mt76_515-2023-09-18-2afc7285.orig/mt7603/mt7603.h
++++ mt76_515-2023-09-18-2afc7285/mt7603/mt7603.h
+@@ -110,6 +110,8 @@ struct mt7603_dev {
+ 	u32 rxfilter;
+ 
+ 	struct mt7603_sta global_sta;
++	
++	int snr;
+ 
+ 	u32 agc0, agc3;
+ 	u32 false_cca_ofdm, false_cca_cck;

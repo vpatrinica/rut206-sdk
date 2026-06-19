@@ -1,0 +1,1 @@
+{"network/routes/smcroutes":{"description":"SMCRoute configuration","read":{"api":{"/smcroutes/*":["*"],"/interfaces/basic/status/*":["name","proto"]}},"write":{"api":["/smcroutes/*"]}}}

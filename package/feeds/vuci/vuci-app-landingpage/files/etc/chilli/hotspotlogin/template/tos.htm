@@ -1,0 +1,27 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="template">
+            <div class="template__body">
+                <div class="template__picture">
+                    <%include("logo")%>
+                    <h1 class="template__title"><%=var.text.form.picture_title%></h1>
+                </div>
+                <div class="template__panel">
+                    <div class="template__panel-content">
+                        <div class="template__panel-msg">
+                            <h2 class="template__panel-title"><%=var.text.tos.title%></h2>
+                            <p class="template__panel-text"><%=var.text.tos.message%></p>
+                            <p class="template__panel-text"><%=var.text.tos.agreement%></p>
+                        </div>
+                        <div class="template__form-wrapper">
+                            <div class="template__form">
+                                <button id="backbtn" type="button" class="template__form-button"><%=var.text.button.back%></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

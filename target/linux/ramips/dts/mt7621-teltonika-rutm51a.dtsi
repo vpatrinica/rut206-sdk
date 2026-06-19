@@ -1,0 +1,273 @@
+// PWR, RST |G0|G10|
+// IN, OUT  |G8|G12|
+// SR CTRL  |G5|G9|G11|G44|
+// WAN      |S17-S20|
+// WIFI     |G6|G7|
+// ETH      |S0-S7|G15-G16|
+// 5G		|G13-G17|G46-G48|
+
+/ {
+    ext_io {
+
+        shift_io: shift_io@0 {
+            registers-number = <3>;
+        };
+    };
+
+    tlt_gpios {
+
+        gpiochip_info {
+
+            hw_0 {
+                gpiochip_3 = <24>;
+            };
+        };
+
+        misc {
+
+            GPIO_14 {
+                compatible_branch = "!A";
+                line_name = "GPIO_MODEM_RESET_1";
+            };
+
+            GPIO_17 {
+                compatible_branch = "!A";
+                line_name = "GPIO_MODEM_POWER_1";
+            };
+
+            GPIO_107 {
+                compatible_branch = "A";
+                line_name = "GPIO_MODEM_RESET_1";
+            };
+
+            GPIO_108 {
+                compatible_branch = "A";
+                line_name = "GPIO_MODEM_POWER_1";
+            };
+
+            GPIO_112 {
+                compatible_branch = "A";
+                line_name = "GPIO_SIM_SELECT_1";
+            };
+
+            GPIO_117 {
+                compatible_branch = "A";
+                line_name = "GPIO_SIM_SELECT_2";
+            };
+        };
+    };
+
+    gpio-export {
+		compatible = "gpio-export";
+		#size-cells = <0>;
+
+		gpio_modem_reset {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		gpio_modem_power {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		gpio_modem_reset@1 {
+			tlt-mnf,branch = "A";
+			gpio-export,name = "modem_reset";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 11 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_modem_power@1 {
+			tlt-mnf,branch = "A";
+			gpio-export,name = "modem_power";
+			gpio-export,output = <1>;
+			gpios = <&shift_io 12 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select {
+			tlt-mnf,branch = "A";
+			gpio-export,name = "sim_sel_1";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 16 GPIO_ACTIVE_HIGH>;
+		};
+
+		gpio_sim_select_2 {
+			tlt-mnf,branch = "A";
+			gpio-export,name = "sim_sel_2";
+			gpio-export,output = <0>;
+			gpios = <&shift_io 21 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+    leds {
+		compatible = "gpio-leds";
+
+		led_gen_3 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_gen_3@1 {
+			tlt-mnf,branch = "A";
+			label = "mob_gen_3";
+			gpios = <&shift_io 13 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_4 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_gen_4@1 {
+			tlt-mnf,branch = "A";
+			label = "mob_gen_4";
+			gpios = <&shift_io 14 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_gen_5 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_gen_5@1 {
+			tlt-mnf,branch = "A";
+			label = "mob_gen_5";
+			gpios = <&shift_io 15 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_ssid_1 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_ssid_1@1 {
+			tlt-mnf,branch = "A";
+			label = "mob_ssid_1";
+			gpios = <&shift_io 8 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_3 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_ssid_3@1 {
+			tlt-mnf,branch = "A";
+			label = "mob_ssid_3";
+			gpios = <&shift_io 9 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_ssid_5 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_ssid_5@1 {
+			tlt-mnf,branch = "A";
+			label = "mob_ssid_5";
+			gpios = <&shift_io 10 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "timer";
+		};
+
+		led_eth_y0 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_eth_y0@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_y0";
+			gpios = <&shift_io 4 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y1 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_eth_y1@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_y1";
+			gpios = <&shift_io 5 GPIO_ACTIVE_HIGH>;
+		};
+		
+		led_eth_y2 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_eth_y2@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_y2";
+			gpios = <&shift_io 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y3 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_eth_y3@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_y3";
+			gpios = <&shift_io 7 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_y4 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_eth_y4@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_y4";
+			gpios = <&gpio 16 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_eth_g4 {
+			tlt-mnf,incompatible_branch = "A";
+		};
+
+		led_eth_g4@1 {
+			tlt-mnf,branch = "A";
+			label = "eth_g4";
+			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_24@1 {
+			tlt-mnf,branch = "A";
+			label = "wifi_gen_2";
+			gpios = <&gpio 6 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wifi_50@1 {
+			tlt-mnf,branch = "A";
+			label = "wifi_gen_5";
+			gpios = <&gpio 7 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim1@1 {
+			tlt-mnf,branch = "A";
+			label = "wan_sim_1";
+			gpios = <&shift_io 17 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_sim2@1 {
+			tlt-mnf,branch = "A";
+			label = "wan_sim_2";
+			gpios = <&shift_io 18 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_eth@1 {
+			tlt-mnf,branch = "A";
+			label = "wan_eth_3";
+			gpios = <&shift_io 20 GPIO_ACTIVE_HIGH>;
+		};
+
+		led_wan_wifi@1 {
+			tlt-mnf,branch = "A";
+			label = "wan_wifi_4";
+			gpios = <&shift_io 19 GPIO_ACTIVE_HIGH>;
+		};
+		
+	};
+};
+
+&mnfinfo {
+
+	sim_cfg {
+		tlt-mnf,incompatible_branch = "A";
+		default = "1111020_1112020";
+	};
+
+};

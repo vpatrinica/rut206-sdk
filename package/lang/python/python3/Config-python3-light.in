@@ -1,0 +1,11 @@
+menu "Configuration"
+
+config PYTHON3_HOST_PIP_CACHE_WORLD_READABLE
+	bool "Ensure host pip cache is world-readable"
+	default n
+
+config PYTHON3_NOT_INCLUDE_PYCS
+	bool "Do not compile python"
+	default n
+
+endmenu

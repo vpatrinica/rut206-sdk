@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -f "$UCI_CONFIG_DIR/gps" ] || return 1
+
+SECTION="https"
+CONFIG="gps"
+
+uci_get "$CONFIG" "$SECTION" > /dev/null && exit 0
+
+uci_add "$CONFIG" "section" "$SECTION"
+uci_set "$CONFIG" "$SECTION" "enabled" "0"
+
+uci_commit "$CONFIG"
+
+exit 0

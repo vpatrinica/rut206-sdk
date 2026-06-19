@@ -1,0 +1,111 @@
+Index: mt76-2023-05-13-969b7b5e/mt7615/main.c
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/mt7615/main.c
++++ mt76-2023-05-13-969b7b5e/mt7615/main.c
+@@ -12,6 +12,8 @@
+ #include "mt7615.h"
+ #include "mcu.h"
+ 
++#define MT_EDCCA_THRESHOLD_VALUE 16
++
+ static bool mt7615_dev_running(struct mt7615_dev *dev)
+ {
+ 	struct mt7615_phy *phy;
+@@ -77,6 +79,12 @@ static int mt7615_start(struct ieee80211
+ 	if (ret)
+ 		goto out;
+ 
++	ret = mt7615_mcu_set_edcca(dev, true);
++	WARN_ON(ret != 0);
++
++	ret = mt7615_mcu_set_edcca_threshold(dev, MT_EDCCA_THRESHOLD_VALUE);
++	WARN_ON(ret != 0);
++
+ 	set_bit(MT76_STATE_RUNNING, &phy->mt76->state);
+ 
+ 	timeout = mt7615_get_macwork_timeout(dev);
+Index: mt76-2023-05-13-969b7b5e/mt7615/mcu.c
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/mt7615/mcu.c
++++ mt76-2023-05-13-969b7b5e/mt7615/mcu.c
+@@ -2568,3 +2568,31 @@ int mt7615_mcu_set_roc(struct mt7615_phy
+ 	return mt76_mcu_send_msg(&dev->mt76, MCU_CE_CMD(SET_ROC),
+ 				 &req, sizeof(req), false);
+ }
++
++int mt7615_mcu_set_edcca(struct mt7615_dev *dev, bool enable)
++{
++	struct {
++		u8 enable;
++		u8 band_idx;
++		u8 _rsv[2];
++	} req = {
++		.enable	  = enable ? 1 : 0,
++		.band_idx = 0,
++
++	};
++
++	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_EDCCA_CTRL, &req, sizeof(req), false);
++}
++
++int mt7615_mcu_set_edcca_threshold(struct mt7615_dev *dev, u32 threshold)
++{
++	struct {
++		u32 cmd;
++		u32 threshold;
++	} req = {
++		.cmd	   = cpu_to_le32(MT_SET_EDCCA_THRESHOLD),
++		.threshold = cpu_to_le32(threshold),
++	};
++
++	return mt76_mcu_send_msg(&dev->mt76, MCU_EXT_CMD_EAP_CTRL, &req, sizeof(req), false);
++}
+Index: mt76-2023-05-13-969b7b5e/mt7615/mcu.h
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/mt7615/mcu.h
++++ mt76-2023-05-13-969b7b5e/mt7615/mcu.h
+@@ -132,6 +132,10 @@ enum {
+     MT_SKU_4SS_DELTA,
+ };
+ 
++enum {
++	MT_SET_EDCCA_THRESHOLD = 0x1,
++};
++
+ struct mt7615_mcu_rxd {
+ 	__le32 rxd[4];
+ 
+Index: mt76-2023-05-13-969b7b5e/mt7615/mt7615.h
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/mt7615/mt7615.h
++++ mt76-2023-05-13-969b7b5e/mt7615/mt7615.h
+@@ -539,6 +539,9 @@ int mt7615_mac_set_beacon_filter(struct
+ 				 bool enable);
+ int mt7615_mcu_set_bss_pm(struct mt7615_dev *dev, struct ieee80211_vif *vif,
+ 			  bool enable);
++int mt7615_mcu_set_edcca(struct mt7615_dev *dev, bool enable);
++int mt7615_mcu_set_edcca_threshold(struct mt7615_dev *dev, u32 threshold);
++
+ int __mt7663_load_firmware(struct mt7615_dev *dev);
+ void mt7615_coredump_work(struct work_struct *work);
+ 
+Index: mt76-2023-05-13-969b7b5e/mt76_connac_mcu.h
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/mt76_connac_mcu.h
++++ mt76-2023-05-13-969b7b5e/mt76_connac_mcu.h
+@@ -1174,6 +1174,7 @@ enum {
+ 	MCU_EXT_CMD_TXDPD_CAL = 0x60,
+ 	MCU_EXT_CMD_CAL_CACHE = 0x67,
+ 	MCU_EXT_CMD_RED_ENABLE = 0x68,
++	MCU_EXT_CMD_EDCCA_CTRL = 0x70,
+ 	MCU_EXT_CMD_SET_RADAR_TH = 0x7c,
+ 	MCU_EXT_CMD_SET_RDD_PATTERN = 0x7d,
+ 	MCU_EXT_CMD_MWDS_SUPPORT = 0x80,
+@@ -1183,6 +1184,7 @@ enum {
+ 	MCU_EXT_CMD_OFFCH_SCAN_CTRL = 0x9a,
+ 	MCU_EXT_CMD_SET_RDD_TH = 0x9d,
+ 	MCU_EXT_CMD_MURU_CTRL = 0x9f,
++	MCU_EXT_CMD_EAP_CTRL = 0xa0,
+ 	MCU_EXT_CMD_SET_SPR = 0xa8,
+ 	MCU_EXT_CMD_GROUP_PRE_CAL_INFO = 0xab,
+ 	MCU_EXT_CMD_DPD_PRE_CAL_INFO = 0xac,

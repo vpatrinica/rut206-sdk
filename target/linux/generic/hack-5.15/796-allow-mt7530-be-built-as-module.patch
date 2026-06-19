@@ -1,0 +1,10 @@
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -3465,6 +3465,7 @@ mt7530_remove_common(struct mt7530_priv
+ 
+ 	mutex_destroy(&priv->reg_mutex);
+ }
++EXPORT_SYMBOL_GPL(mt7530_remove_common);
+ 
+ MODULE_AUTHOR("Sean Wang <sean.wang@mediatek.com>");
+ MODULE_DESCRIPTION("Driver for Mediatek MT7530 Switch");

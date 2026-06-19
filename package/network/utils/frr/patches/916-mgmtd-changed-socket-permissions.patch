@@ -1,0 +1,25 @@
+From 13c124b5e7189fb2d174361dfe234cf4f3ef9c7c Mon Sep 17 00:00:00 2001
+From: Danius Kunickas <danius.kunickas@teltonika.lt>
+Date: Mon, 8 Dec 2025 12:39:32 +0200
+Subject: [PATCH] mgmtd: changed socket permissions
+
+---
+ lib/mgmt_msg.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/mgmt_msg.c b/lib/mgmt_msg.c
+index aff9af7..79e987d 100644
+--- a/lib/mgmt_msg.c
++++ b/lib/mgmt_msg.c
+@@ -865,7 +865,7 @@ int msg_server_init(struct msg_server *server, const char *sopath,
+ 	addr.sun_family = AF_UNIX,
+ 	strlcpy(addr.sun_path, sopath, sizeof(addr.sun_path));
+ 	unlink(addr.sun_path);
+-	old_mask = umask(0077);
++	old_mask = umask(0007);
+ 	ret = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+ 	if (ret < 0) {
+ 		zlog_err("Failed to bind %s server socket to '%s': %s",
+-- 
+2.43.0
+

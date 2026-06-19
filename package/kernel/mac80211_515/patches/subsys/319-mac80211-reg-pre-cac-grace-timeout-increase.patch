@@ -1,0 +1,11 @@
+--- a/net/wireless/reg.h
++++ b/net/wireless/reg.h
+@@ -152,7 +152,7 @@ bool regulatory_indoor_allowed(void);
+  * value is used for Non-ETSI domain.
+  * TODO: May be make this timeout available through regdb?
+  */
+-#define REG_PRE_CAC_EXPIRY_GRACE_MS 2000
++#define REG_PRE_CAC_EXPIRY_GRACE_MS 4000
+ 
+ /**
+  * regulatory_propagate_dfs_state - Propagate DFS channel state to other wiphys

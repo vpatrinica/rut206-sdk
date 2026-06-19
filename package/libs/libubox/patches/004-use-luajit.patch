@@ -1,0 +1,33 @@
+index 34c9ab1..c198d26 100644
+--- a/lua/CMakeLists.txt
++++ b/lua/CMakeLists.txt
+@@ -5,7 +5,7 @@ PROJECT(uloop C)
+ SET(CMAKE_INSTALL_PREFIX /)
+ 
+ IF(NOT LUA_CFLAGS)
+-	pkg_search_module(LUA lua5.1 lua-5.1)
++	pkg_search_module(LUA luajit)
+ ENDIF()
+ 
+ ADD_DEFINITIONS(-Os -Wall -Werror --std=gnu99 -g3 -I.. ${LUA_CFLAGS})
+index 7a73f16..5ae3cef 100644
+--- a/lua/uloop.c
++++ b/lua/uloop.c
+@@ -67,7 +67,7 @@ ul_create_userdata(lua_State *L, size_t size, const luaL_Reg *reg, lua_CFunction
+ 	lua_pushvalue(L, -1);
+ 	lua_setmetatable(L, -3);
+ 	lua_pushvalue(L, -2);
+-	luaI_openlib(L, NULL, reg, 1);
++	luaL_openlib(L, NULL, reg, 1);
+ 	lua_pushvalue(L, -2);
+ 
+ 	return ret;
+@@ -597,7 +597,7 @@ static int ul_end(lua_State *L)
+ 	return 1;
+ }
+ 
+-static luaL_reg uloop_func[] = {
++static luaL_Reg uloop_func[] = {
+ 	{"init", ul_init},
+ 	{"run", ul_run},
+ 	{"timer", ul_timer},

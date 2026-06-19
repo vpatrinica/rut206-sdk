@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -f "$UCI_CONFIG_DIR/rms_connect_mqtt" ] && {
+  cat "$UCI_CONFIG_DIR/rms_connect_mqtt" >> "$UCI_CONFIG_DIR/rms_mqtt"
+  rm "$UCI_CONFIG_DIR/rms_connect_mqtt"
+}
+
+[ -f "$UCI_CONFIG_DIR/rms_connect_timer" ] && {
+  cat "$UCI_CONFIG_DIR/rms_connect_timer" >> "$UCI_CONFIG_DIR/rms_mqtt"
+  rm "$UCI_CONFIG_DIR/rms_connect_timer"
+}
+
+config_load rms_mqtt
+uci_remove rms_mqtt "rms_connect_mqtt" "debug"
+uci_commit "rms_mqtt"
+
+exit 0

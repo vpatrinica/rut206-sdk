@@ -1,0 +1,116 @@
+===================================================================
+--- a/agent/mibgroup/if-mib/data_access/interface_ioctl.c
++++ b/agent/mibgroup/if-mib/data_access/interface_ioctl.c
+@@ -29,6 +29,10 @@ netsnmp_feature_child_of(interface_ioctl
+ #include "interface_ioctl.h"
+ #include "ip-mib/data_access/ipaddress_ioctl.h"
+ 
++/* Array of interfaces when persistent indexing is used */
++static int g_persistance_enabled  = 0;
++static char **g_persistent_ifaces = NULL;
++
+ /**
+  * ioctl wrapper
+  *
+@@ -399,9 +403,33 @@ netsnmp_access_interface_ioctl_ifindex_g
+ #else
+     struct ifreq    ifrq;
+     int rc = 0;
++    int persist_i = 0;
+ 
+     DEBUGMSGTL(("access:interface:ioctl", "ifindex_get\n"));
+ 
++    if (!g_persistance_enabled) {
++        goto skip_persistence;
++    }
++
++    if (!g_persistent_ifaces) {
++        g_persistent_ifaces = realloc(g_persistent_ifaces, (persist_i + 2) * sizeof(char *));
++        g_persistent_ifaces[persist_i] = strdup(name);
++        g_persistent_ifaces[persist_i + 1] = NULL;
++        return persist_i + 1;
++    } else {
++        for (int i = 0; g_persistent_ifaces[i]; i++) {
++            if (!strcmp(name, g_persistent_ifaces[i])) {
++                return i + 1;
++            }
++            persist_i = i + 1;
++        }
++        g_persistent_ifaces = realloc(g_persistent_ifaces, (persist_i + 2) * sizeof(char *));
++        g_persistent_ifaces[persist_i] = strdup(name);
++        g_persistent_ifaces[persist_i + 1] = NULL;
++        return persist_i + 1;
++    }
++
++skip_persistence:
+     rc = _ioctl_get(fd, SIOCGIFINDEX, &ifrq, name);
+     if (rc < 0) {
+         DEBUGMSGTL(("access:interface:ioctl",
+@@ -486,3 +514,28 @@ netsnmp_access_interface_ioctl_has_ipv4(
+ 
+     return 0;
+ }
++
++/**
++ * read IfIndex persistence configuration
++ */
++void
++netsnmp_access_interface_ioctl_set_persistence(const char *token, char *cptr)
++{
++    if (cptr && !strcmp(cptr, "1")) {
++        g_persistance_enabled = 1;
++    }
++}
++
++/**
++ * free array of interfaces if IfIndex persistence was used
++ */
++void
++netsnmp_access_interface_ioctl_free_persistence()
++{
++    if (g_persistent_ifaces) {
++        for (int j = 0; g_persistent_ifaces[j]; j++) {
++            free(g_persistent_ifaces[j]);
++        }
++        free(g_persistent_ifaces);
++    }
++}
+===================================================================
+--- a/agent/mibgroup/if-mib/data_access/interface_ioctl.h
++++ b/agent/mibgroup/if-mib/data_access/interface_ioctl.h
+@@ -51,6 +51,12 @@ netsnmp_access_interface_ioctl_has_ipv4(
+                                         int if_index, u_int *flags,
+                                         const struct ifconf *pifc);
+ 
++void
++netsnmp_access_interface_ioctl_set_persistence(const char *token, char *cptr);
++
++void
++netsnmp_access_interface_ioctl_free_persistence();
++
+ /**---------------------------------------------------------------------*/
+ 
+ # ifdef __cplusplus
+===================================================================
+--- a/agent/mibgroup/if-mib/ifTable/ifTable.c
++++ b/agent/mibgroup/if-mib/ifTable/ifTable.c
+@@ -31,6 +31,7 @@ netsnmp_feature_require(interface_access
+ #include <net-snmp/agent/mib_modules.h>
+ 
+ #include "ifTable_interface.h"
++#include "if-mib/data_access/interface_ioctl.h"
+ 
+ #ifdef USING_IP_MIB_IPV4INTERFACETABLE_IPV4INTERFACETABLE_MODULE
+ #   include "ip-mib/ipv4InterfaceTable/ipv4InterfaceTable.h"
+@@ -108,6 +109,11 @@ _init_ifTable(int majorID, int minorID,
+ void
+ init_ifTable(void)
+ {
++    register_prenetsnmp_mib_handler(NULL, "persistentIfIndex",
++        netsnmp_access_interface_ioctl_set_persistence,
++        netsnmp_access_interface_ioctl_free_persistence,
++        "set persistent ifIndex values");
++
+     snmp_register_callback(SNMP_CALLBACK_LIBRARY,
+                            SNMP_CALLBACK_PRE_READ_CONFIG,
+                            _init_ifTable, NULL);

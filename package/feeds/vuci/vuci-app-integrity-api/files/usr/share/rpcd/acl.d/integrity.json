@@ -1,0 +1,1 @@
+{"system/maintenance/integrity":{"description":"Integrity check","read":{"api":{"/integrity/*":["*"]}},"write":{"api":["/integrity/*"]}}}

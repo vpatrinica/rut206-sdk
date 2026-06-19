@@ -1,0 +1,350 @@
+--- a/configure.ac
++++ b/configure.ac
+@@ -270,6 +270,24 @@ AC_ARG_ENABLE(ubus-pam,
+ 	]
+ )
+ 
++AC_ARG_ENABLE(2fa,
++	[  --enable-2fa            Try to include 2FA support],
++	[
++		if test "x$enableval" = "xyes"; then
++			AC_DEFINE(DROPBEAR_SVR_2FA_SUPPORT,1,Use 2FA)
++			AC_MSG_NOTICE(Enabling 2FA)
++		else
++			AC_DEFINE(DROPBEAR_SVR_2FA_SUPPORT,0,Use 2FA)
++			AC_MSG_NOTICE(Disabling 2FA)
++		fi
++	],
++	[
++		# disable it by default
++		AC_DEFINE(DROPBEAR_SVR_2FA_SUPPORT,0,Use 2FA)
++		AC_MSG_NOTICE(Disabling 2FA)
++	]
++)
++
+ AC_ARG_ENABLE(openpty,
+ 	[AS_HELP_STRING([--disable-openpty], [Don't use openpty, use alternative method])],
+ 	[
+--- a/src/auth.h
++++ b/src/auth.h
+@@ -64,6 +64,12 @@ static inline void svr_pubkey_set_forced
+ static inline void svr_pubkey_options_cleanup(void) { }
+ #define svr_add_pubkey_options(x,y,z) DROPBEAR_SUCCESS
+ #endif
++#if DROPBEAR_SVR_2FA_SUPPORT
++void svr_auth_2fa(int valid_user);
++void svr_auth_2fa_response(void);
++int svr_2fa_required(const char *username);
++void recv_msg_userauth_info_response(void);
++#endif // DROPBEAR_SVR_2FA_SUPPORT
+ 
+ /* Client functions */
+ void recv_msg_userauth_failure(void);
+@@ -89,6 +95,9 @@ void cli_auth_pubkey_cleanup(void);
+ #define AUTH_TYPE_PUBKEY    (1 << 1)
+ #define AUTH_TYPE_PASSWORD  (1 << 2)
+ #define AUTH_TYPE_INTERACT  (1 << 3)
++#if DROPBEAR_SVR_2FA_SUPPORT
++#define AUTH_TYPE_2FA       (1 << 4)
++#endif // DROPBEAR_SVR_2FA_SUPPORT
+ 
+ #define AUTH_METHOD_NONE "none"
+ #define AUTH_METHOD_NONE_LEN 4
+--- /dev/null
++++ b/src/svr-auth2fa.c
+@@ -0,0 +1,190 @@
++#include "includes.h"
++#include "session.h"
++#include "buffer.h"
++#include "dbutil.h"
++#include "auth.h"
++#include "runopts.h"
++#include "ssh.h"
++#include "packet.h"
++
++#if DROPBEAR_SVR_2FA_SUPPORT
++
++#include <libubus.h>
++#include <libubox/blobmsg.h>
++
++#define MAX_2FA_RETRY 3
++#define UBUS_TIMEOUT  10000
++
++enum {
++	_2FA_RES,
++	_2FA_ACTIVE,
++	__2FA_MAX
++};
++
++static const struct blobmsg_policy _2fa_policy[__2FA_MAX] = {
++	[_2FA_RES]    = { .name = "res", .type = BLOBMSG_TYPE_BOOL },
++	[_2FA_ACTIVE] = { .name = "active", .type = BLOBMSG_TYPE_BOOL },
++};
++
++static void check_2fa_cb(struct ubus_request *req, int type, struct blob_attr *msg)
++{
++	(void)type;
++
++	bool *res = (bool *)req->priv;
++	struct blob_attr *tb[__2FA_MAX];
++
++	blobmsg_parse(_2fa_policy, __2FA_MAX, tb, blob_data(msg), blob_len(msg));
++
++	if (tb[_2FA_RES]) {
++		*res = blobmsg_get_bool(tb[_2FA_RES]);
++	} else if (tb[_2FA_ACTIVE]) {
++		*res = blobmsg_get_bool(tb[_2FA_ACTIVE]);
++	}
++}
++
++static bool status_2fa(struct ubus_context *ctx, char const *username)
++{
++	static struct blob_buf b = { 0 };
++	uint32_t id              = 0;
++	bool active              = false;
++
++	if (!username || !ctx || ubus_lookup_id(ctx, "totp", &id)) {
++		return active;
++	}
++
++	blob_buf_init(&b, 0);
++	blobmsg_add_string(&b, "username", username);
++	ubus_invoke(ctx, id, "status", b.head, check_2fa_cb, &active, UBUS_TIMEOUT);
++	blob_buf_free(&b);
++
++	return active;
++}
++
++static bool check_2fa(struct ubus_context *ctx, char const *username, const char *otp)
++{
++	static struct blob_buf b = { 0 };
++	uint32_t id              = 0;
++	bool res                 = false;
++
++	if (!username || !ctx || ubus_lookup_id(ctx, "totp", &id)) {
++		return res;
++	}
++
++	blob_buf_init(&b, 0);
++	blobmsg_add_string(&b, "username", username);
++	blobmsg_add_string(&b, "totp", otp);
++	ubus_invoke(ctx, id, "check", b.head, check_2fa_cb, &res, UBUS_TIMEOUT);
++	blob_buf_free(&b);
++
++	return res;
++}
++
++int svr_2fa_required(const char *username)
++{
++	struct ubus_context *ctx = ubus_connect(NULL);
++	bool required            = false;
++
++	if (ctx) {
++		required = status_2fa(ctx, username);
++		ubus_free(ctx);
++	}
++
++	return required ? 1 : 0;
++}
++
++void svr_auth_2fa(int valid_user)
++{
++	char *response;
++	unsigned int num_responses;
++	struct ubus_context *ctx = NULL;
++	bool totp_valid          = false;
++
++	TRACE(("enter svr_auth_2fa"))
++
++	if (ses.authstate.authtypes & AUTH_TYPE_2FA == 0) {
++		TRACE(("leave svr_auth_2fa: 2FA not required"))
++		return;
++	}
++
++	if (!valid_user) {
++		send_msg_userauth_failure(0, 1);
++		TRACE(("leave svr_auth_2fa: invalid user"))
++		return;
++	}
++
++	buf_eatstring(ses.payload); /* language tag */
++	buf_eatstring(ses.payload); /* submethods */
++
++	TRACE(("sending 2FA keyboard-interactive request"))
++
++	CHECKCLEARTOWRITE();
++
++	buf_putbyte(ses.writepayload, SSH_MSG_USERAUTH_INFO_REQUEST);
++	buf_putstring(ses.writepayload, "", 0); /* name */
++	buf_putstring(ses.writepayload, "", 0); /* instruction */
++	buf_putstring(ses.writepayload, "en", 2); /* language */
++	buf_putint(ses.writepayload, 1); /* number of prompts */
++	buf_putstring(ses.writepayload, "Enter one time password: ", 25);
++	buf_putbyte(ses.writepayload, 0); /* echo = false */
++
++	encrypt_packet();
++
++	TRACE(("leave svr_auth_2fa: sent info request"))
++}
++
++void svr_auth_2fa_response(void)
++{
++	char *response;
++	unsigned int num_responses;
++	struct ubus_context *ctx = NULL;
++	bool totp_valid          = false;
++
++	TRACE(("enter svr_auth_2fa_response"))
++
++	if (ses.authstate.authtypes & AUTH_TYPE_2FA == 0) {
++		TRACE(("leave svr_auth_2fa_response: 2FA not required"))
++		return;
++	}
++
++	num_responses = buf_getint(ses.payload);
++	if (num_responses != 1) {
++		dropbear_log(LOG_WARNING, "Bad number of responses for 2FA from %s", svr_ses.addrstring);
++		send_msg_userauth_failure(0, 1);
++		TRACE(("leave svr_auth_2fa_response: bad response count"))
++		return;
++	}
++
++	response = buf_getstring(ses.payload, NULL);
++
++	ctx = ubus_connect(NULL);
++	if (ctx) {
++		totp_valid = check_2fa(ctx, ses.authstate.pw_name, response);
++		ubus_free(ctx);
++	}
++
++	m_burn(response, strlen(response));
++	m_free(response);
++
++	if (totp_valid) {
++		dropbear_log(LOG_NOTICE, "2FA auth succeeded for '%s' from %s", ses.authstate.pw_name,
++		             svr_ses.addrstring);
++
++		ses.authstate.authtypes &= ~AUTH_TYPE_2FA;
++
++		if (ses.authstate.authtypes) {
++			/* More auth required (shouldn't happen in typical setup) */
++			send_msg_userauth_failure(1, 0); /* partial success */
++		} else {
++			/* All auth complete */
++			send_msg_userauth_success();
++		}
++	} else {
++		dropbear_log(LOG_WARNING, "2FA auth failed for '%s' from %s", ses.authstate.pw_name,
++		             svr_ses.addrstring);
++		send_msg_userauth_failure(0, 1);
++	}
++
++	TRACE(("leave svr_auth_2fa_response"))
++}
++
++#endif /* DROPBEAR_SVR_2FA_SUPPORT */
+--- a/src/svr-auth.c
++++ b/src/svr-auth.c
+@@ -70,6 +70,12 @@ void send_msg_userauth_banner(const buff
+ 	TRACE(("leave send_msg_userauth_banner"))
+ }
+ 
++#if DROPBEAR_SVR_2FA_SUPPORT
++void recv_msg_userauth_info_response(void) {
++	svr_auth_2fa_response();
++}
++#endif
++
+ /* handle a userauth request, check validity, pass to password or pubkey
+  * checking, and handle success or failure */
+ void recv_msg_userauth_request() {
+@@ -149,6 +155,13 @@ void recv_msg_userauth_request() {
+ #if DROPBEAR_SVR_PASSWORD_AUTH || DROPBEAR_SVR_UBUS_PAM_AUTH
+ 	if (!svr_opts.noauthpass &&
+ 			!(svr_opts.norootpass && ses.authstate.pw_uid == 0) ) {
++#if DROPBEAR_SVR_2FA_SUPPORT
++		if (methodlen == AUTH_METHOD_INTERACT_LEN &&
++				strncmp(methodname, AUTH_METHOD_INTERACT, AUTH_METHOD_INTERACT_LEN) == 0) {
++			svr_auth_2fa(valid_user);
++			goto out;
++		}
++#endif
+ 		/* user wants to try password auth */
+ 		if (methodlen == AUTH_METHOD_PASSWORD_LEN &&
+ 				strncmp(methodname, AUTH_METHOD_PASSWORD,
+@@ -378,7 +391,7 @@ void send_msg_userauth_failure(int parti
+ 	buf_putbyte(ses.writepayload, SSH_MSG_USERAUTH_FAILURE);
+ 
+ 	/* put a list of allowed types */
+-	typebuf = buf_new(30); /* long enough for PUBKEY and PASSWORD */
++	typebuf = buf_new(50); /* long enough for PUBKEY, PASSWORD AND INTERACT */
+ 
+ 	if (ses.authstate.authtypes & AUTH_TYPE_PUBKEY) {
+ 		buf_putbytes(typebuf, (const unsigned char *)AUTH_METHOD_PUBKEY, AUTH_METHOD_PUBKEY_LEN);
+@@ -391,6 +404,12 @@ void send_msg_userauth_failure(int parti
+ 		buf_putbytes(typebuf, (const unsigned char *)AUTH_METHOD_PASSWORD, AUTH_METHOD_PASSWORD_LEN);
+ 	}
+ 
++#if DROPBEAR_SVR_2FA_SUPPORT
++	if (ses.authstate.authtypes & AUTH_TYPE_2FA) {
++		buf_putbytes(typebuf, (const unsigned char *)AUTH_METHOD_INTERACT, AUTH_METHOD_INTERACT_LEN);
++	}
++#endif
++
+ 	buf_putbufstring(ses.writepayload, typebuf);
+ 
+ 	TRACE(("auth fail: methods %d, '%.*s'", ses.authstate.authtypes,
+--- a/src/svr-authpasswd.c
++++ b/src/svr-authpasswd.c
+@@ -117,6 +117,17 @@ void svr_auth_password(int valid_user) {
+ 	}
+ 
+ 	if (constant_time_strcmp(testcrypt, passwdcrypt) == 0) {
++#if DROPBEAR_SVR_2FA_SUPPORT
++		if (svr_2fa_required(ses.authstate.pw_name)) {
++			dropbear_log(LOG_NOTICE,
++					"Password auth succeeded for '%s' from %s, 2FA required",
++					ses.authstate.pw_name,
++					svr_ses.addrstring);
++			ses.authstate.authtypes = AUTH_TYPE_2FA;
++			send_msg_userauth_failure(1, 0); /* Send partial success */
++			return;
++		}
++#endif
+ 		if (svr_opts.multiauthmethod && (ses.authstate.authtypes & ~AUTH_TYPE_PASSWORD)) {
+ 			/* successful password authentication, but extra auth required */
+ 			dropbear_log(LOG_NOTICE,
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -51,7 +51,7 @@ COMMONOBJS = $(patsubst %,$(OBJ_DIR)/%,$
+ _SVROBJS=lock_manager.o ip_block.o svr-kex.o svr-auth.o sshpty.o \
+ 		svr-authpasswd.o svr-authpubkey.o svr-authpubkeyoptions.o svr-session.o svr-service.o \
+ 		svr-chansession.o svr-runopts.o svr-agentfwd.o svr-main.o svr-x11fwd.o\
+-		svr-tcpfwd.o svr-authpam.o
++		svr-tcpfwd.o svr-authpam.o svr-auth2fa.o
+ SVROBJS = $(patsubst %,$(OBJ_DIR)/%,$(_SVROBJS))
+ 
+ _CLIOBJS=cli-main.o cli-auth.o cli-authpasswd.o cli-kex.o \
+--- a/src/svr-session.c
++++ b/src/svr-session.c
+@@ -68,6 +68,9 @@ static const packettype svr_packettypes[
+ 	{SSH_MSG_CHANNEL_OPEN_CONFIRMATION, recv_msg_channel_open_confirmation},
+ 	{SSH_MSG_CHANNEL_OPEN_FAILURE, recv_msg_channel_open_failure},
+ #endif
++#if DROPBEAR_SVR_2FA_SUPPORT
++	{SSH_MSG_USERAUTH_INFO_RESPONSE, recv_msg_userauth_info_response},
++#endif
+ 	{0, NULL} /* End */
+ };
+ 
+--- a/src/process-packet.c
++++ b/src/process-packet.c
+@@ -35,7 +35,7 @@
+ #include "auth.h"
+ #include "channel.h"
+ 
+-#define MAX_UNAUTH_PACKET_TYPE SSH_MSG_USERAUTH_PK_OK
++#define MAX_UNAUTH_PACKET_TYPE SSH_MSG_USERAUTH_INFO_RESPONSE
+ 
+ static void recv_unimplemented(void);
+ 

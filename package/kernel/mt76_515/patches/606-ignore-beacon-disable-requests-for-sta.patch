@@ -1,0 +1,14 @@
+Index: mt76_515-2023-09-18-2afc7285/mt7603/main.c
+===================================================================
+--- mt76_515-2023-09-18-2afc7285.orig/mt7603/main.c	2024-02-12 13:56:31.842472605 +0200
++++ mt76_515-2023-09-18-2afc7285/mt7603/main.c	2024-02-12 14:00:04.577075809 +0200
+@@ -327,7 +327,8 @@
+ 		}
+ 	}
+ 
+-	if (changed & (BSS_CHANGED_BEACON_ENABLED | BSS_CHANGED_BEACON_INT)) {
++	if (changed & (BSS_CHANGED_BEACON_ENABLED | BSS_CHANGED_BEACON_INT) && 
++	    !(vif->type == NL80211_IFTYPE_STATION && !info->enable_beacon)) {
+ 		int beacon_int = !!info->enable_beacon * info->beacon_int;
+ 
+ 		tasklet_disable(&dev->mt76.pre_tbtt_tasklet);

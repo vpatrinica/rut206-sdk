@@ -1,0 +1,170 @@
+index dab4d6c..1441ed8 100644
+Index: uci-2021-10-22-f84f49f0-20/file.c
+===================================================================
+--- uci-2021-10-22-f84f49f0-20.orig/file.c
++++ uci-2021-10-22-f84f49f0-20/file.c
+@@ -29,6 +29,7 @@
+ #include <string.h>
+ #include <stdlib.h>
+ #include <errno.h>
++#include <stdarg.h>
+ 
+ #include "uci.h"
+ #include "uci_internal.h"
+@@ -509,11 +510,12 @@ static void uci_parse_line(struct uci_co
+ {
+ 	struct uci_parse_context *pctx = ctx->pctx;
+ 	char *word;
++	char *save_ptr = NULL;
+ 
+ 	/* Skip whitespace characters at the start of line */
+ 	skip_whitespace(ctx);
+ 	do {
+-		word = strtok(pctx_cur_str(pctx), " \t");
++		word = strtok_r(pctx_cur_str(pctx), " \t", &save_ptr);
+ 		if (!word)
+ 			return;
+ 
+@@ -730,16 +732,84 @@ static char *uci_config_path(struct uci_
+ 	return filename;
+ }
+ 
++struct uci_file_lock {
++	int fd;
++};
++#define UCI_FILE_LOCK_INVALID ((struct uci_file_lock){ .fd = -1 })
++
++static void uci_file_lock_release(struct uci_file_lock lock)
++{
++	if (lock.fd < 0) {
++		return;
++	}
++
++	// Ignore error
++	flock(lock.fd, LOCK_UN);
++
++	// Ignore error
++	close(lock.fd);
++	lock.fd = -1;
++}
++
++static struct uci_file_lock uci_file_lock_acquire(
++	struct uci_context *ctx,
++	const char *package_name,
++	const char *package_path
++)
++{
++	struct uci_file_lock file_lock = UCI_FILE_LOCK_INVALID;
++
++	struct stat statbuf = { 0 };
++	if (stat(ctx->savedir, &statbuf) < 0) {
++		mode_t savedir_mode = UCI_DIRMODE;
++		if (stat(ctx->confdir, &statbuf) == 0) {
++			savedir_mode = statbuf.st_mode;
++		}
++
++		mkdir(ctx->savedir, savedir_mode);
++	} else if ((statbuf.st_mode & S_IFMT) != S_IFDIR) {
++		UCI_THROW(ctx, UCI_ERR_IO);
++	}
++
++	int sz = snprintf(NULL, 0, "%s/%s.lock", ctx->savedir, package_name);
++	char *lock_filename = alloca(sz + 1);
++	snprintf(lock_filename, sz + 1, "%s/%s.lock", ctx->savedir, package_name);
++
++	file_lock.fd = open(lock_filename, O_CREAT | O_RDONLY, UCI_FILEMODE);
++	if (file_lock.fd < 0) {
++		goto error;
++	}
++
++	if (stat(package_path, &statbuf) == 0) {
++		int fd = file_lock.fd;
++
++		fchown(fd, getuid() ? (uid_t)-1 : statbuf.st_uid, statbuf.st_gid);
++		fchmod(fd, statbuf.st_mode);
++	}
++
++	int ret = flock(file_lock.fd, LOCK_EX);
++	if ((ret < 0) && (errno != ENOSYS)) {
++		goto error;
++	}
++
++	return file_lock;
++error:
++	uci_file_lock_release(file_lock);
++	return UCI_FILE_LOCK_INVALID;
++}
++
+ static void uci_file_commit(struct uci_context *ctx, struct uci_package **package, bool overwrite)
+ {
+ 	struct uci_package *p = *package;
+-	FILE *f1, *f2 = NULL;
++	FILE *volatile f1 = NULL;
++	FILE *volatile f2 = NULL;
+ 	char *volatile name = NULL;
+ 	char *volatile path = NULL;
+ 	char *filename = NULL;
+ 	struct stat statbuf;
+ 	volatile bool do_rename = false;
+-	int fd, sz;
++	int fd;
++	struct uci_file_lock file_lock = UCI_FILE_LOCK_INVALID;
+ 
+ 	if (!p->path) {
+ 		if (overwrite)
+@@ -748,17 +818,21 @@ static void uci_file_commit(struct uci_c
+ 			UCI_THROW(ctx, UCI_ERR_INVAL);
+ 	}
+ 
+-	sz = snprintf(NULL, 0, "%s/.%s.uci-XXXXXX", ctx->confdir, p->e.name);
++	int sz = snprintf(NULL, 0, "%s/.%s.uci-XXXXXX", ctx->confdir, p->e.name);
+ 	filename = alloca(sz + 1);
+ 	snprintf(filename, sz + 1, "%s/.%s.uci-XXXXXX", ctx->confdir, p->e.name);
+ 
+-	/* open the config file for writing now, so that it is locked */
+-	f1 = uci_open_stream(ctx, p->path, NULL, SEEK_SET, true, true);
++	file_lock = uci_file_lock_acquire(ctx, p->e.name, p->path);
++	if (file_lock.fd < 0) {
++		UCI_THROW(ctx, UCI_ERR_IO);
++	}
+ 
+ 	/* flush unsaved changes and reload from delta file */
+ 	UCI_TRAP_SAVE(ctx, done);
+ 	if (p->has_delta) {
+ 		if (!overwrite) {
++			f1 = uci_open_stream(ctx, p->path, NULL, SEEK_SET, false, true);
++
+ 			name = uci_strdup(ctx, p->e.name);
+ 			path = uci_strdup(ctx, p->path);
+ 			/* dump our own changes to the delta file */
+@@ -809,16 +883,17 @@ static void uci_file_commit(struct uci_c
+ 
+ 	fflush(f2);
+ 	fsync(fileno(f2));
+-	uci_close_stream(f2);
+ 
+ 	do_rename = true;
+ 
+ 	UCI_TRAP_RESTORE(ctx);
+ 
+ done:
++	if (f2) {
++		uci_close_stream(f2);
++	}
+ 	free(name);
+ 	free(path);
+-	uci_close_stream(f1);
+ 	if (do_rename) {
+ 		path = realpath(p->path, NULL);
+ 		if (!path || stat(path, &statbuf) || chmod(filename, statbuf.st_mode) || rename(filename, path)) {
+@@ -828,6 +903,10 @@ done:
+ 		chown(path, getuid() ? (uid_t)-1 : statbuf.st_uid, statbuf.st_gid);
+ 		free(path);
+ 	}
++	if (f1) {
++		uci_close_stream(f1);
++	}
++	uci_file_lock_release(file_lock);
+ 	if (ctx->err)
+ 		UCI_THROW(ctx, ctx->err);
+ }

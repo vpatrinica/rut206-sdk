@@ -1,0 +1,8 @@
+{
+  "system/admin/multiusers/2fa": {
+    "title": "2FA",
+    "index": 4,
+    "acls": ["system/admin/multiusers/2fa"],
+    "view": "system/TwoFactorAuth"
+  }
+}

@@ -1,0 +1,23 @@
+--- a/drivers/phy/ralink/phy-ralink-usb.c
++++ b/drivers/phy/ralink/phy-ralink-usb.c
+@@ -94,6 +94,11 @@ static int ralink_usb_phy_power_on(struc
+ 	struct ralink_usb_phy *phy = phy_get_drvdata(_phy);
+ 	u32 t;
+ 
++	/* assert the reset lines */
++	reset_control_assert(phy->rsthost);
++	reset_control_assert(phy->rstdev);
++	mdelay(10);
++
+ 	/* enable the phy */
+ 	regmap_update_bits(phy->sysctl, RT_SYSC_REG_CLKCFG1,
+ 			   phy->clk, phy->clk);
+@@ -111,7 +116,7 @@ static int ralink_usb_phy_power_on(struc
+ 	 * The SDK kernel had a delay of 100ms. however on device
+ 	 * testing showed that 10ms is enough
+ 	 */
+-	mdelay(10);
++	mdelay(100);
+ 
+ 	if (phy->base)
+ 		ralink_usb_phy_init(phy);

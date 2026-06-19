@@ -1,0 +1,196 @@
+Index: ustream-ssl-2026-03-01-99f1c0db/ustream-openssl.c
+===================================================================
+--- ustream-ssl-2026-03-01-99f1c0db.orig/ustream-openssl.c
++++ ustream-ssl-2026-03-01-99f1c0db/ustream-openssl.c
+@@ -106,10 +106,16 @@
+ __hidden struct ustream_ssl_ctx *
+ __ustream_ssl_context_new(bool server)
+ {
+-	struct ustream_ssl_ctx *ctx;
++	struct ustream_ssl_ctx *ctx = calloc(1, sizeof(*ctx));
+ 	const void *m;
+ 	SSL_CTX *c;
+ 
++	ctx->libctx = OSSL_LIB_CTX_new();
++	if (!ctx->libctx) {
++		free(ctx);
++		return NULL;
++	}
++
+ #if OPENSSL_VERSION_NUMBER < 0x10100000L
+ 	static bool _init = false;
+ 
+@@ -131,11 +137,18 @@ __ustream_ssl_context_new(bool server)
+ 	} else
+ 		m = TLS_client_method();
+ 
+-	c = SSL_CTX_new((void *) m);
+-	if (!c)
+-		return NULL;
++#ifdef OPENSSL_TPM_SUPPORT
++	c = SSL_CTX_new_ex(ctx->libctx, NULL, (void *)m);
++#else
++	c = SSL_CTX_new((void *)m);
++#endif
+ 
+-	ctx = calloc(1, sizeof(*ctx));
++	if (!c) {
++		if (ctx->libctx)
++			OSSL_LIB_CTX_free(ctx->libctx);
++		free(ctx);
++		return NULL;
++	}
+ 	ctx->ssl = c;
+ 
+ #if defined(HAVE_WOLFSSL)
+@@ -206,10 +219,77 @@ __hidden int __ustream_ssl_set_crt_file(
+ 	return 0;
+ }
+ 
++static int ustream_ssl_load_provider(struct ustream_ssl_ctx *uctx,
++							   enum ustream_ssl_provider_type provider_type)
++{
++	switch (provider_type) {
++	case USTREAM_SSL_PROVIDER_DEFAULT:
++		uctx->provider = OSSL_PROVIDER_load(uctx->libctx, "default");
++		return uctx->provider ? 0 : -1;
++#ifdef OPENSSL_TPM_SUPPORT
++	case USTREAM_SSL_PROVIDER_TPM2:
++		uctx->provider = OSSL_PROVIDER_try_load(uctx->libctx, "tpm2", 1);
++		return uctx->provider ? 0 : -1;
++#endif
++	default:
++		return -1;
++	}
++}
++
++#ifdef OPENSSL_TPM_SUPPORT
++static int ustream_ssl_load_key_from_tpm(struct ustream_ssl_ctx *uctx,
++                               const char *handle)
++{
++	OSSL_STORE_CTX *store_ctx = NULL;
++	OSSL_STORE_INFO *store_info = NULL;
++	EVP_PKEY *pkey = NULL;
++	int ret = 1;
++
++	if (ustream_ssl_load_provider(uctx, USTREAM_SSL_PROVIDER_TPM2))
++		goto out;
++
++	store_ctx = OSSL_STORE_open_ex(handle, uctx->libctx, NULL, NULL, NULL, NULL, NULL, NULL);
++	if (!store_ctx)
++		goto out;
++
++	if (OSSL_STORE_expect(store_ctx, OSSL_STORE_INFO_PKEY) != 1)
++		goto out;
++
++	store_info = OSSL_STORE_load(store_ctx);
++	if (!store_info)
++		goto out;
++
++	pkey = OSSL_STORE_INFO_get1_PKEY(store_info);
++	if (!pkey)
++		goto out;
++
++	if (SSL_CTX_use_PrivateKey(uctx->ssl, pkey) != 1) {
++		pkey = NULL;
++		goto out;
++	}
++
++	ret = 0;
++
++out:
++	EVP_PKEY_free(pkey);
++	OSSL_STORE_INFO_free(store_info);
++	OSSL_STORE_close(store_ctx);
++	return ret;
++}
++#endif
++
+ __hidden int __ustream_ssl_set_key_file(struct ustream_ssl_ctx *ctx, const char *file)
+ {
+ 	int ret;
+ 
++#ifdef OPENSSL_TPM_SUPPORT
++	if (strncmp(file, "handle:", 7) == 0) {
++		return ustream_ssl_load_key_from_tpm(ctx, file);
++	}
++#endif
++
++	ustream_ssl_load_provider(ctx, USTREAM_SSL_PROVIDER_DEFAULT);
++
+ 	ret = SSL_CTX_use_PrivateKey_file(ctx->ssl, file, SSL_FILETYPE_PEM);
+ 	if (ret < 1)
+ 		ret = SSL_CTX_use_PrivateKey_file(ctx->ssl, file, SSL_FILETYPE_ASN1);
+@@ -247,6 +327,10 @@ __hidden void __ustream_ssl_context_free
+ 	SSL_CTX_free(ctx->ssl);
+ 	if (ctx->debug_bio)
+ 		BIO_free(ctx->debug_bio);
++	if (ctx->provider)
++		OSSL_PROVIDER_unload(ctx->provider);
++	if (ctx->libctx)
++		OSSL_LIB_CTX_free(ctx->libctx);
+ 	free(ctx);
+ }
+ 
+Index: ustream-ssl-2026-03-01-99f1c0db/ustream-openssl.h
+===================================================================
+--- ustream-ssl-2026-03-01-99f1c0db.orig/ustream-openssl.h
++++ ustream-ssl-2026-03-01-99f1c0db/ustream-openssl.h
+@@ -25,15 +25,26 @@
+ #else
+ #include <openssl/ssl.h>
+ #include <openssl/err.h>
++#include <openssl/store.h>
++#include <openssl/provider.h>
+ #endif
+ 
+ #include <stdbool.h>
+ 
++enum ustream_ssl_provider_type {
++	USTREAM_SSL_PROVIDER_DEFAULT,
++#ifdef OPENSSL_TPM_SUPPORT
++	USTREAM_SSL_PROVIDER_TPM2,
++#endif
++};
++
+ struct ustream_ssl_ctx {
+ 	SSL_CTX *ssl;
+ 	BIO *debug_bio;
+ 	ustream_ssl_debug_cb debug_cb;
+ 	void *debug_cb_priv;
++	OSSL_LIB_CTX *libctx;
++	OSSL_PROVIDER *provider;
+ };
+ 
+ struct bio_ctx {
+Index: ustream-ssl-2026-03-01-99f1c0db/CMakeLists.txt
+===================================================================
+--- ustream-ssl-2026-03-01-99f1c0db.orig/CMakeLists.txt
++++ ustream-ssl-2026-03-01-99f1c0db/CMakeLists.txt
+@@ -9,6 +9,18 @@ IF(CMAKE_C_COMPILER_VERSION VERSION_GREA
+ ENDIF()
+ ADD_DEFINITIONS(-Wno-unused-parameter -Wmissing-declarations)
+ 
++option(openssl_tpm_support "Enable TPM support in OpenSSL" OFF)
++find_package(OpenSSL REQUIRED)
++
++if(openssl_tpm_support)
++	if(OPENSSL_VERSION VERSION_GREATER_EQUAL 3.0)
++		ADD_DEFINITIONS(-DOPENSSL_TPM_SUPPORT)
++	else()
++		message(WARNING "TPM support requires OpenSSL >= 3.0, found ${OPENSSL_VERSION}")
++	endif()
++endif()
++
++
+ SET(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
+ IF (NOT APPLE)
+   SET(CMAKE_SHARED_LINKER_FLAGS "-Wl,--no-undefined")
+@@ -53,7 +65,6 @@ INSTALL(FILES ustream-ssl.h
+ INSTALL(TARGETS ustream-ssl
+ 	LIBRARY DESTINATION lib
+ )
+-
+ IF(ABIVERSION)
+ 	SET_TARGET_PROPERTIES(ustream-ssl PROPERTIES VERSION ${ABIVERSION})
+ ENDIF()

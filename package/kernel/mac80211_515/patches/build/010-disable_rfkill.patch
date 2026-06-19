@@ -1,0 +1,15 @@
+Index: backports-6.1.24/backport-include/linux/rfkill.h
+===================================================================
+--- backports-6.1.24.orig/backport-include/linux/rfkill.h
++++ backports-6.1.24/backport-include/linux/rfkill.h
+@@ -2,6 +2,11 @@
+ #define __BACKPORT_UAPI__RFKILL_H
+ #include_next <linux/rfkill.h>
+ 
++#undef CONFIG_RFKILL
++#undef CONFIG_RFKILL_FULL
++#undef CONFIG_RFKILL_LEDS
++#undef CONFIG_RFKILL_MODULE
++#undef CONFIG_RFKILL_FULL_MODULE
+ 
+ #if LINUX_VERSION_IS_LESS(5,11,0)

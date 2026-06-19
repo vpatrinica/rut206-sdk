@@ -1,0 +1,44 @@
+Index: pptpd-1.4.0/pptpctrl.c
+===================================================================
+--- pptpd-1.4.0.orig/pptpctrl.c
++++ pptpd-1.4.0/pptpctrl.c
+@@ -128,7 +128,16 @@ int main(int argc, char **argv)
+         }
+ 
+         /* open a connection to the syslog daemon */
+-        openlog("pptpd", LOG_PID, PPTP_FACILITY);
++        const char *log_id = getenv("LOGID");
++        char ident[64];
++        if (log_id && *log_id) {
++                snprintf(ident, sizeof(ident), "pptpd(%s)", log_id);
++                openlog(ident, LOG_PID, PPTP_FACILITY);
++        }
++        else
++        {
++                openlog("pptpd", LOG_PID, PPTP_FACILITY);
++        }
+ 
+         /* autoreap if supported */
+         signal(SIGCHLD, SIG_IGN);
+Index: pptpd-1.4.0/pptpd.c
+===================================================================
+--- pptpd-1.4.0.orig/pptpd.c
++++ pptpd-1.4.0/pptpd.c
+@@ -155,7 +155,16 @@ int main(int argc, char **argv)
+         char tmp[MAX_CONFIG_STRING_SIZE], *tmpstr;
+ 
+         /* open a connection to the syslog daemon */
+-        openlog("pptpd", LOG_PID, PPTP_FACILITY);
++        const char *log_id = getenv("LOGID");
++        char ident[64];
++        if (log_id && *log_id) {
++                snprintf(ident, sizeof(ident), "pptpd(%s)", log_id);
++                openlog(ident, LOG_PID, PPTP_FACILITY);
++        }
++        else
++        {
++                openlog("pptpd", LOG_PID, PPTP_FACILITY);
++        }
+ 
+         /* process command line options */
+         while (1) {

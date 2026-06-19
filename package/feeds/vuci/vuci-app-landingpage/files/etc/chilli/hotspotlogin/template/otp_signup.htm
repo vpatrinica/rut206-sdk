@@ -1,0 +1,54 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="template">
+            <div class="template__body">
+                <div class="template__picture">
+                    <%include("logo")%>
+                    <h1 class="template__title"><%=var.text.form.picture_title%></h1>
+                </div>
+                <div class="template__panel">
+                    <div class="template__panel-content">
+                        <h2 class="template__panel-title"><%=var.text.form.nav_register%></h2>
+                        <h3 class="template__panel-subtitle"><%=var.text.form.msg_title%></h3>
+                        <p class="template__panel-text template__panel-text--spaced"><%=var.text.form.msg_content%></p>
+                        <div class="template__form-wrapper">
+                            <form class="template__form" action="javascript:void(0);">
+                                <input type="hidden" name="challenge" value="<%=challenge%>">
+                                <input type="hidden" name="uamip" value="<%=uamip%>">
+                                <input type="hidden" name="uamport" value="<%=uamport%>">
+                                <input type="hidden" name="userurl" value="<%=userurl%>">
+                                <input type="hidden" name="challenge" value="<%=challenge%>">
+                                <div class="template__form-item">
+                                    <label for="tel" class="template__form-label"><%=var.text.field.phone%></label>
+                                    <input id="tel" type="tel" pattern="^[0-9\*+#]+$" class="template__form-input" name="phone" required>
+                                </div>
+                                <%- if res == "smssignup_fail" then %>
+                                <p class="template__form-error">
+                                    <% if reason then %>
+                                        <% if reason == "already" then %>
+                                            <%=var.text.error.already_otp%>
+                                        <% elseif reason == "sms" then %>
+                                            <%=var.text.error.sms%>
+                                        <%else%>
+                                            <%=var.text.error.default%>
+                                        <% end %>
+                                    <% else %>
+                                        <%=var.text.error.default%>
+                                    <% end %>
+                                </p>
+                                <%end%>
+                                <button class="template__form-button" name="register" type="submit"><%=var.text.button.register%></button>
+                            </form>
+                            <p class="template__footer">
+                                <span class="template__footer-text"><%=var.text.signup.prefix%></span>
+                                <a target="_blank" href="<%=url('smsauth') .. '?force=login&' .. query%>" class="template__footer-link"><%=var.text.signup.link%></a>
+                                <span class="template__footer-text"><%=var.text.signup.suffix%></span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

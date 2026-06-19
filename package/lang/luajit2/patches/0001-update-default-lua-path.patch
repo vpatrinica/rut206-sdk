@@ -1,0 +1,101 @@
+From 286c1552c1c782acd0a22bfbb753eb54bad397a7 Mon Sep 17 00:00:00 2001
+From: Rokas Puzonas <rokas.puzonas@teltonika.lt>
+Date: Fri, 30 Jan 2026 13:46:30 +0200
+Subject: [PATCH] update default lua path
+
+---
+ src/Makefile  |  7 -------
+ src/luaconf.h | 56 ++++++++++++++++++++++++---------------------------
+ 2 files changed, 26 insertions(+), 37 deletions(-)
+
+diff --git a/src/Makefile b/src/Makefile
+index 60fa5373..da179fa1 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -287,18 +287,11 @@ TARGET_ARCH+= $(patsubst %,-DLUAJIT_TARGET=LUAJIT_ARCH_%,$(TARGET_LJARCH))
+ 
+ ifneq (,$(PREFIX))
+ ifneq (/usr/local,$(PREFIX))
+-  TARGET_XCFLAGS+= -DLUA_ROOT=\"$(PREFIX)\"
+   ifneq (/usr,$(PREFIX))
+     TARGET_DYNXLDOPTS= -Wl,-rpath,$(TARGET_LIBPATH)
+   endif
+ endif
+ endif
+-ifneq (,$(MULTILIB))
+-  TARGET_XCFLAGS+= -DLUA_MULTILIB=\"$(MULTILIB)\"
+-endif
+-ifneq (,$(LMULTILIB))
+-  TARGET_XCFLAGS+= -DLUA_LMULTILIB=\"$(LMULTILIB)\"
+-endif
+ 
+ ##############################################################################
+ # Target system detection.
+diff --git a/src/luaconf.h b/src/luaconf.h
+index f47f0680..5cc334c0 100644
+--- a/src/luaconf.h
++++ b/src/luaconf.h
+@@ -29,37 +29,33 @@
+ ** Note to distribution maintainers: do NOT patch the following lines!
+ ** Please read ../doc/install.html#distro and pass PREFIX=/usr instead.
+ */
+-#ifndef LUA_MULTILIB
+-#define LUA_MULTILIB	"lib"
+-#endif
+-#ifndef LUA_LMULTILIB
+-#define LUA_LMULTILIB	"lib"
+-#endif
+-#define LUA_LROOT	"/usr/local"
+-#define LUA_LUADIR	"/lua/5.1/"
+-#define LUA_LJDIR	"/luajit-2.1/"
+-
+-#ifdef LUA_ROOT
+-#define LUA_JROOT	LUA_ROOT
+-#define LUA_RLDIR	LUA_ROOT "/share" LUA_LUADIR
+-#define LUA_RCDIR	LUA_ROOT "/" LUA_MULTILIB LUA_LUADIR
+-#define LUA_RLPATH	";" LUA_RLDIR "?.lua;" LUA_RLDIR "?/init.lua"
+-#define LUA_RCPATH	";" LUA_RCDIR "?.so"
+-#else
+-#define LUA_JROOT	LUA_LROOT
+-#define LUA_RLPATH
+-#define LUA_RCPATH
+-#endif
+-
+-#define LUA_JPATH	";" LUA_JROOT "/share" LUA_LJDIR "?.lua"
+-#define LUA_LLDIR	LUA_LROOT "/share" LUA_LUADIR
+-#define LUA_LCDIR	LUA_LROOT "/" LUA_LMULTILIB LUA_LUADIR
+-#define LUA_LLPATH	";" LUA_LLDIR "?.lua;" LUA_LLDIR "?/init.lua"
+-#define LUA_LCPATH1	";" LUA_LCDIR "?.so"
+-#define LUA_LCPATH2	";" LUA_LCDIR "loadall.so"
+ 
+-#define LUA_PATH_DEFAULT	"./?.lua" LUA_JPATH LUA_LLPATH LUA_RLPATH
+-#define LUA_CPATH_DEFAULT	"./?.so" LUA_LCPATH1 LUA_RCPATH LUA_LCPATH2
++// Sorry, but I will patch these lines. Because:
++// * LUA_LUADIR which by default points to `/lua/5.1/` isn't good, I need `/lua/`
++// * Need multiple roots, i.e. /usr/share/lua/ and /usr/local/share/lua/
++// * We keep .lua files in the /usr/lib/lua folder, which isn't standard.
++
++#define LUA_ROOT "/usr"
++#define LUA_LOCAL_ROOT "/usr/local/usr"
++
++#define LUA_SHARE_DIR "/share/lua"
++#define LUA_LIB_DIR "/lib/lua"
++
++#define LUA_PATH_DEFAULT "./?.lua" \
++                            ";" LUA_ROOT       LUA_SHARE_DIR "/?.lua" \
++                            ";" LUA_ROOT       LUA_SHARE_DIR "/?/init.lua" \
++                            ";" LUA_ROOT       LUA_LIB_DIR   "/?.lua" \
++                            ";" LUA_ROOT       LUA_LIB_DIR   "/?/init.lua" \
++                            ";" LUA_LOCAL_ROOT LUA_SHARE_DIR "/?.lua" \
++                            ";" LUA_LOCAL_ROOT LUA_SHARE_DIR "/?/init.lua" \
++                            ";" LUA_LOCAL_ROOT LUA_LIB_DIR   "/?.lua" \
++                            ";" LUA_LOCAL_ROOT LUA_LIB_DIR   "/?/init.lua"
++
++#define LUA_CPATH_DEFAULT "./?.so" \
++                            ";" LUA_ROOT       LUA_LIB_DIR   "/?.so" \
++                            ";" LUA_LOCAL_ROOT LUA_SHARE_DIR "/?.so" \
++                            ";" LUA_LOCAL_ROOT LUA_LIB_DIR   "/?.so" \
++                            ";" LUA_ROOT       LUA_LIB_DIR   "/loadall.so"
+ #endif
+ 
+ /* Environment variable names for path overrides and initialization code. */

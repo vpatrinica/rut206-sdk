@@ -1,0 +1,25 @@
+diff --git a/lua/CMakeLists.txt b/lua/CMakeLists.txt
+index 0f9bf8f..9fa15f1 100644
+--- a/lua/CMakeLists.txt
++++ b/lua/CMakeLists.txt
+@@ -6,7 +6,7 @@ IF(NOT LUA_CFLAGS)
+ 	FIND_PROGRAM(PKG_CONFIG pkg-config)
+ 	IF(PKG_CONFIG)
+ 		EXECUTE_PROCESS(
+-			COMMAND pkg-config --silence-errors --cflags lua5.1
++			COMMAND pkg-config --silence-errors --cflags luajit
+ 			OUTPUT_VARIABLE LUA_CFLAGS
+ 			OUTPUT_STRIP_TRAILING_WHITESPACE
+ 		)
+diff --git a/lua/ubus.c b/lua/ubus.c
+index 08cce28..e307d4f 100644
+--- a/lua/ubus.c
++++ b/lua/ubus.c
+@@ -20,6 +20,7 @@
+ #include <libubox/blobmsg_json.h>
+ #include <lauxlib.h>
+ #include <lua.h>
++#include <limits.h>
+ 
+ #define MODNAME		"ubus"
+ #define METANAME	MODNAME ".meta"

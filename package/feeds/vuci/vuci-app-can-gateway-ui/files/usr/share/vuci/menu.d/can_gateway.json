@@ -1,0 +1,17 @@
+{
+  "services/can": {
+    "title": "CAN",
+    "index": 260,
+    "depends": {
+      "board": {
+        "allOf": [ "has_can" ]
+      }
+    }
+  },
+  "services/can/gateway": {
+    "title": "Gateway",
+    "index": 10,
+    "view": "services/CanGateway",
+    "acls": ["services/can/gateway"]
+  }
+}

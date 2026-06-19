@@ -1,0 +1,12 @@
+--- a/drivers/gpio/gpio-74x164.c
++++ b/drivers/gpio/gpio-74x164.c
+@@ -122,6 +122,9 @@ static int gen_74x164_probe(struct spi_d
+ 	if (!chip)
+ 		return -ENOMEM;
+ 
++	if (!of_property_read_u8_array(spi->dev.of_node, "initial-values", chip->buffer, nregs))
++		dev_info(&spi->dev, "Shiftreg set to initial values\n");
++
+ 	chip->gpiod_oe = devm_gpiod_get_optional(&spi->dev, "enable",
+ 						 GPIOD_OUT_LOW);
+ 	if (IS_ERR(chip->gpiod_oe))

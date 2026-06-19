@@ -1,0 +1,8 @@
+{
+  "system/maintenance/integrity": {
+    "title": "Integrity",
+    "index": 110,
+    "view": "system/IntegrityCheck",
+    "acls": ["system/maintenance/integrity"]
+  }
+}

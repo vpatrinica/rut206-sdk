@@ -1,0 +1,102 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+USE_PROCD=1
+PROG=/usr/sbin/smcrouted
+[ -x "$PROG" ] || PROG="/usr/local$PROG"
+FLUSH_SCRIPT=/usr/bin/smc_flush
+[ -x "$FLUSH_SCRIPT" ] || FLUSH_SCRIPT="/usr/local$FLUSH_SCRIPT"
+WORKDIR="/var/run/smcroute"
+CONFIGFILE="$WORKDIR/smcrouted.conf"
+
+add_interface_triggers() {
+	local enabled src_iface dst_iface
+
+	config_get_bool enabled "$1" enabled 0
+
+	[ "$enabled" -eq 0 ] && return
+
+	config_get src_iface "$1" "src_iface" ""
+	config_get dst_iface "$1" "dst_iface" ""
+
+	[ -z "$src_iface" ] || [ -z "$dst_iface" ] && return
+
+	for iface in $src_iface $dst_iface; do
+		procd_add_interface_trigger "interface.*" $iface /etc/init.d/smcroute restart
+	done
+}
+
+phyint_ttl() {
+	local interface ttl enabled dev
+
+	config_get_bool enabled "$1" enabled 0
+
+	[ "$enabled" -eq 0 ] && return
+
+	config_get ttl "$1" ttl ""
+	config_get interface "$1" interface ""
+
+	network_get_device dev "$interface"
+
+	[ -z "$dev" ] || [ -z "$ttl" ] && return
+
+	echo -e "phyint $dev enable ttl-threshold $ttl" >>"$CONFIGFILE"
+}
+
+mcast_route() {
+	local src_iface src_dev dst_iface dst_dev enabled src_ip group
+
+	config_get_bool enabled "$1" enabled 0
+
+	[ "$enabled" -eq 0 ] && return
+
+	config_get src_iface "$1" src_iface ""
+	config_get dst_iface "$1" dst_iface ""
+	config_get src_ip "$1" src_ip ""
+	config_get group "$1" group ""
+
+	network_get_device src_dev "$src_iface"
+	network_get_device dst_dev "$dst_iface"
+
+	[ -z "$src_dev" ] || [ -z "$dst_dev" ] && return
+
+	echo -e "\nmgroup from $src_dev ${src_ip:+source $src_ip} group $group" >>"$CONFIGFILE"
+	echo -e "mroute from $src_dev ${src_ip:+source $src_ip} group $group to $dst_dev" >>"$CONFIGFILE"
+}
+
+start_service() {
+	config_load smcroute
+
+	local enabled
+	config_get_bool enabled "smcroute" enabled 0
+
+	[ "$enabled" -eq 0 ] && return
+
+	. /lib/functions/network.sh
+
+	mkdir -p $WORKDIR
+
+	config_foreach phyint_ttl phyint
+	config_foreach mcast_route mroute
+
+	procd_open_instance
+	procd_set_param command $PROG -n -f $CONFIGFILE -e $FLUSH_SCRIPT -p smcroute:smcroute
+	procd_set_param file $CONFIGFILE
+	procd_close_instance
+}
+
+stop_service() {
+	rm -rf $WORKDIR
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "smcroute"
+
+	config_load "smcroute"
+	config_foreach add_interface_triggers "mroute"
+}

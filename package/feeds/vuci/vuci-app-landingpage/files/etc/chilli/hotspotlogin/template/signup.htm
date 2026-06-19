@@ -1,0 +1,70 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="template">
+            <div class="template__body">
+                <div class="template__picture">
+                    <%include("logo")%>
+                    <h1 class="template__title"><%=var.text.form.picture_title%></h1>
+                </div>
+                <div class="template__panel">
+                    <div class="template__panel-content">
+                        <h2 class="template__panel-title"><%=var.text.form.nav_register%></h2>
+                        <h3 class="template__panel-subtitle"><%=var.text.form.msg_title%></h3>
+                        <p class="template__panel-text template__panel-text--spaced"><%=var.text.form.msg_content%></p>
+                        <div class="template__form-wrapper">
+                            <form class="template__form" action="javascript:void(0);">
+                                <input type="hidden" name="challenge" value="<%=challenge%>">
+                                <input type="hidden" name="uamip" value="<%=uamip%>">
+                                <input type="hidden" name="uamport" value="<%=uamport%>">
+                                <input type="hidden" name="userurl" value="<%=userurl%>">
+                                <input type="hidden" name="challenge" value="<%=challenge%>">
+                                <input type="hidden" name="signup" value="<%=signup%>">
+                                <div class="template__form-inner">
+                                    <div class="template__form-item">
+                                        <label for="" class="template__form-label"><%=var.text.field.email%></label>
+                                        <input name="email" type="email" class="template__form-input" required <%=(email and email ~= "") and ('value="%s"' % email) or ''%>>
+                                    </div>
+                                    <div class="template__form-item">
+                                        <label for="" class="template__form-label"><%=var.text.field.phone%></label>
+                                        <input name="phone" type="tel" pattern="^[0-9\*+#]+$" class="template__form-input" required <%=(phone and phone ~= "") and ('value="%s"' % phone) or ''%>>
+                                    </div>
+                                    <div class="template__form-item">
+                                        <label for="" class="template__form-label"><%=var.text.field.password%></label>
+                                        <input name="password" type="password" class="template__form-input" required <%=(password and password ~= "") and ('value="%s"' % password) or ''%>>
+                                    </div>
+                                    <div class="template__form-item">
+                                        <label for="" class="template__form-label"><%=var.text.field.confirm_password%></label>
+                                        <input name="confirm_password" type="password" class="template__form-input" required <%=(confirm_password and confirm_password ~= "") and ('value="%s"' % confirm_password) or ''%>>
+                                    </div>
+                                    <p class="template__form-error">
+                                        <% if reason then %>
+                                            <% if reason == "already" then %>
+                                                <%=var.text.error.already%>
+                                            <%elseif reason == "denied" then%>
+                                                <%=var.text.error.denied%>
+                                            <%elseif reason == "form" then%>
+                                                <%=var.text.error.form%>
+                                            <% end %>
+                                        <% elseif res == "signup_fail" then%>
+                                            <%=var.text.error.default%>
+                                        <% end %>
+                                    </p>
+                                    <p id="pw_msg" class="template__hidden template__form-error">
+                                        <%=var.text.error.password_mismatch%>
+                                    </p>
+                                    <button class="template__form-button" name="register" type="submit"><%=var.text.button.register%></button>
+                                </div>
+                            </form>
+                            <p class="template__footer">
+                                <span class="template__footer-text"><%=var.text.signup.prefix%></span>
+                                <a href="<%=url("userpass").."?"..query%>" class="template__footer-link"><%=var.text.signup.link%></a>
+                                <span class="template__footer-text"><%=var.text.signup.suffix%></span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,73 @@
+--- a/drivers/net/usb/rndis_host.c
++++ b/drivers/net/usb/rndis_host.c
+@@ -601,10 +601,50 @@ static const struct driver_info	rndis_po
+ 	.tx_fixup =	rndis_tx_fixup,
+ };
+ 
++static const struct driver_info asr_rndis_info = {
++	.description =	"Asr RNDIS device",
++	.flags =	FLAG_WWAN | FLAG_POINTTOPOINT | FLAG_FRAMING_RN | FLAG_NO_SETINT | FLAG_NOARP,
++	.bind =		rndis_bind,
++	.unbind =	rndis_unbind,
++	.status =	rndis_status,
++	.rx_fixup =	rndis_rx_fixup,
++	.tx_fixup =	rndis_tx_fixup,
++};
++
+ /*-------------------------------------------------------------------------*/
+ 
+ static const struct usb_device_id	products [] = {
+ {
++	/* Quectel EG060V rndis device */
++	USB_DEVICE_AND_INTERFACE_INFO(0x2c7c, 0x6004,
++				      USB_CLASS_WIRELESS_CONTROLLER, 1, 3),
++	.driver_info = (unsigned long) &asr_rndis_info,
++}, {
++	/* Quectel EC200A rndis device */
++	USB_DEVICE_AND_INTERFACE_INFO(0x2c7c, 0x6005,
++				      USB_CLASS_WIRELESS_CONTROLLER, 1, 3),
++	.driver_info = (unsigned long) &asr_rndis_info,
++}, {
++	/* Quectel EC200T rndis device */
++	USB_DEVICE_AND_INTERFACE_INFO(0x2c7c, 0x6026,
++				      USB_CLASS_WIRELESS_CONTROLLER, 1, 3),
++	.driver_info = (unsigned long) &asr_rndis_info,
++}, {
++	/* Simcom A7906E rndis device */
++	USB_DEVICE_AND_INTERFACE_INFO(0x1e0e, 0x9011,
++				      USB_CLASS_WIRELESS_CONTROLLER, 1, 3),
++	.driver_info = (unsigned long) &asr_rndis_info,
++}, {
++	/* Meig SLM770A */
++	USB_DEVICE_AND_INTERFACE_INFO(0x2dee, 0x4d57,
++				      USB_CLASS_WIRELESS_CONTROLLER, 1, 3),
++	.driver_info = (unsigned long) &asr_rndis_info,
++}, {
++	/* Meig SLM828 */
++	USB_DEVICE_AND_INTERFACE_INFO(0x2dee, 0x4d49,
++				      USB_CLASS_WIRELESS_CONTROLLER, 1, 3),
++	.driver_info = (unsigned long) &asr_rndis_info,
++}, {
+ 	/* 2Wire HomePortal 1000SW */
+ 	USB_DEVICE_AND_INTERFACE_INFO(0x1630, 0x0042,
+ 				      USB_CLASS_COMM, 2 /* ACM */, 0x0ff),
+--- a/drivers/usb/serial/option.c
++++ b/drivers/usb/serial/option.c
+@@ -293,6 +293,7 @@ static void option_instat_callback(struc
+ #define QUECTEL_PRODUCT_EC200U			0x0901
+ #define QUECTEL_PRODUCT_EG912Y			0x6001
+ #define QUECTEL_PRODUCT_EC200S_CN		0x6002
++#define QUECTEL_PRODUCT_EG060W_EA		0x6004
+ #define QUECTEL_PRODUCT_EC200A			0x6005
+ #define QUECTEL_PRODUCT_EG916Q			0x6007
+ #define QUECTEL_PRODUCT_EM061K_LWW		0x6008
+@@ -1302,7 +1303,8 @@ static const struct usb_device_id option
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EC200S_CN, 0xff, 0, 0) },
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EC200T, 0xff, 0, 0) },
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG912Y, 0xff, 0, 0) },
+-	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG916Q, 0xff, 0xff, 0xff),
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG916Q, 0xff, 0xff, 0xff) },
++	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG060W_EA, 0xff, 0, 0),
+ 	  .driver_info = NUMEP2 },
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_EG916Q, 0xff, 0x00, 0x00) },
+ 	{ USB_DEVICE_AND_INTERFACE_INFO(QUECTEL_VENDOR_ID, QUECTEL_PRODUCT_RM500K, 0xff, 0x00, 0x00) },

@@ -1,0 +1,48 @@
+From 7035fc26e9a36ae1a9e2573e0584f521c2b30532 Mon Sep 17 00:00:00 2001
+From: Rokas Puzonas <rokas.puzonas@teltonika.lt>
+Date: Fri, 30 Jan 2026 13:50:18 +0200
+Subject: [PATCH] skip shebang
+
+---
+ src/lj_load.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/lj_load.c b/src/lj_load.c
+index 07304487..a8dc2137 100644
+--- a/src/lj_load.c
++++ b/src/lj_load.c
+@@ -81,6 +81,26 @@ static const char *reader_file(lua_State *L, void *ud, size_t *size)
+   return *size > 0 ? ctx->buf : NULL;
+ }
+ 
++#define MAX_SHEBANG_SIZE LUAL_BUFFERSIZE
++
++static void skip_shebang(FILE *fp)
++{
++  size_t file_start = 0;
++
++  char buf[MAX_SHEBANG_SIZE];
++  size_t size = fread(buf, 1, sizeof(buf), fp);
++  if (size > 0 && buf[0] == '#') {
++    for (size_t i = 1; i < size; i++) {
++      if (buf[i] == '\n') {
++        file_start = i + 1;
++        break;
++      }
++    }
++  }
++
++  fseek(fp, file_start, SEEK_SET);
++}
++
+ LUALIB_API int luaL_loadfilex(lua_State *L, const char *filename,
+ 			      const char *mode)
+ {
+@@ -94,6 +114,7 @@ LUALIB_API int luaL_loadfilex(lua_State *L, const char *filename,
+       return LUA_ERRFILE;
+     }
+     chunkname = lua_pushfstring(L, "@%s", filename);
++    skip_shebang(ctx.fp);
+   } else {
+     ctx.fp = stdin;
+     chunkname = "=stdin";

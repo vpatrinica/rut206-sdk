@@ -1,0 +1,174 @@
+--- a/loginutils/login.c
++++ b/loginutils/login.c
+@@ -53,6 +53,11 @@
+ //config:	default y
+ //config:	depends on LOGIN
+ //config:
++//config:config FEATURE_2FA
++//config:	bool "Support for 2FA"
++//config:	default y
++//config:	depends on LOGIN
++//config:
+ 
+ //applet:/* Needs to be run by root or be suid root - needs to change uid and gid: */
+ //applet:IF_LOGIN(APPLET(login, BB_DIR_BIN, BB_SUID_REQUIRE))
+@@ -79,8 +84,6 @@
+ #include <syslog.h>
+ #ifdef CONFIG_FEATURE_IP_BLOCKD
+ #include <tlt_logger.h>
+-#include <libubus.h>
+-#include <libubox/blobmsg.h>
+ #include <string.h>
+ #include "lock_manager.h"
+ #include "ip_block.h"
+@@ -90,6 +93,24 @@
+ static void push_log(char *format, ...);
+ #endif // CONFIG_FEATURE_IP_BLOCKD
+ 
++#ifdef CONFIG_FEATURE_2FA
++#include <libubus.h>
++#include <libubox/blobmsg.h>
++
++#define UBUS_TIMEOUT 10000
++
++enum {
++	_2FA_RES,
++	_2FA_ACTIVE,
++	__2FA_MAX
++};
++
++static const struct blobmsg_policy _2fa_policy[__2FA_MAX] = {
++	[_2FA_RES] = { .name = "res", .type = BLOBMSG_TYPE_BOOL },
++	[_2FA_ACTIVE] = { .name = "active", .type = BLOBMSG_TYPE_BOOL },
++};
++#endif // CONFIG_FEATURE_2FA
++
+ #if ENABLE_SELINUX
+ # include <selinux/selinux.h>  /* for is_selinux_enabled()  */
+ # include <selinux/get_context_list.h> /* for get_default_context() */
+@@ -168,6 +189,65 @@ struct globals {
+ #define G (*(struct globals*)bb_common_bufsiz1)
+ #define INIT_G() do { setup_common_bufsiz(); } while (0)
+ 
++#ifdef CONFIG_FEATURE_2FA
++static void check_2fa_cb(struct ubus_request *req, int type, struct blob_attr *msg)
++{
++	(void)type;
++
++	bool *res = (bool *)req->priv;
++	struct blob_attr *tb[__2FA_MAX];
++
++	blobmsg_parse(_2fa_policy, __2FA_MAX, tb, blob_data(msg), blob_len(msg));
++
++	if (tb[_2FA_RES]) {
++		*res = blobmsg_get_bool(tb[_2FA_RES]);
++	} else if (tb[_2FA_ACTIVE]) {
++		*res = blobmsg_get_bool(tb[_2FA_ACTIVE]);
++	}
++}
++
++static bool status_2fa(struct ubus_context *ctx, char const *username)
++{
++	static struct blob_buf b = { 0 };
++	uint32_t id = 0;
++	bool active = false;
++
++	if (!username || !ctx || ubus_lookup_id(ctx, "totp", &id)) {
++		return active;
++	}
++
++	blob_buf_init(&b, 0);
++ 	blobmsg_add_string(&b, "username", username);
++	ubus_invoke(ctx, id, "status", b.head, check_2fa_cb, &active, UBUS_TIMEOUT);
++	blob_buf_free(&b);
++
++	return active;
++}
++
++static bool check_2fa(struct ubus_context *ctx, char const *username, const char *otp)
++{
++	static struct blob_buf b = { 0 };
++	uint32_t id = 0;
++	bool res = false;
++
++	if (!username || !ctx || ubus_lookup_id(ctx, "totp", &id)) {
++		return res;
++	}
++
++	blob_buf_init(&b, 0);
++ 	blobmsg_add_string(&b, "username", username);
++	blobmsg_add_string(&b, "totp", otp);
++	ubus_invoke(ctx, id, "check", b.head, check_2fa_cb, &res, UBUS_TIMEOUT);
++	blob_buf_free(&b);
++
++	return res;
++}
++
++static void print_otp_prompt(void) {
++	fputs_stdout("Enter one time password: ");
++	fflush_all();
++}
++#endif // CONFIG_FEATURE_2FA
+ 
+ #if ENABLE_FEATURE_NOLOGIN
+ static void die_if_nologin(void)
+@@ -274,13 +354,13 @@ static void login_pam_end(pam_handle_t *
+ # define login_pam_end(pamh) ((void)0)
+ #endif
+ 
+-static void get_username_or_die(char *buf, int size_buf)
++static void get_input_or_die(char *buf, int size_buf, void (*func)(void))
+ {
+ 	int c, cntdown;
+ 
+ 	cntdown = EMPTY_USERNAME_COUNT;
+  prompt:
+-	print_login_prompt();
++	func();
+ 	/* skip whitespace */
+ 	do {
+ 		c = getchar();
+@@ -463,7 +543,7 @@ int login_main(int argc UNUSED_PARAM, ch
+ 		tcflush(0, TCIFLUSH);
+ 
+ 		if (!username[0])
+-			get_username_or_die(username, sizeof(username));
++			get_input_or_die(username, sizeof(username), print_login_prompt);
+ 
+ #if ENABLE_PAM
+ 		pamret = pam_start("login", username, &conv, &pamh);
+@@ -570,6 +650,21 @@ int login_main(int argc UNUSED_PARAM, ch
+ 					username);
+ 				goto auth_failed;
+ 			}
++#ifdef CONFIG_FEATURE_2FA
++			struct ubus_context *ctx = ubus_connect(NULL);
++			if (status_2fa(ctx, username)) {
++				bool ret = false;
++
++				char otp[USERNAME_SIZE];
++				get_input_or_die(otp, sizeof(otp), print_otp_prompt);
++				ret = check_2fa(ctx, username, otp);
++				if (!ret) {
++					ubus_free(ctx);
++					goto auth_failed;
++				}
++			}
++			ubus_free(ctx);
++#endif // CONFIG_FEATURE_2FA
+ 			break; /* success, continue login process */
+ 		}
+ #endif /* ENABLE_PAM */
+--- a/Makefile
++++ b/Makefile
+@@ -616,6 +616,10 @@ ifdef CONFIG_FEATURE_PASSWORD_POLICY
+ CONFIG_EXTRA_LDLIBS+=uci
+ endif
+ 
++ifdef CONFIG_FEATURE_2FA
++CONFIG_EXTRA_LDLIBS+=ubus ubox
++endif
++
+ # Rule to link busybox - also used during CONFIG_KALLSYMS
+ # May be overridden by arch/$(ARCH)/Makefile
+ quiet_cmd_busybox__ ?= LINK    $@

@@ -1,0 +1,12 @@
+#!/bin/sh
+. /lib/functions.sh
+
+IFNAME_HASH="pptp-$(printf '%s' "${PEERNAME}" | md5sum | cut -c1-8)"
+status=$(ubus call ip ip '{"params":["link", "del", "'"${IFNAME_HASH}"'"]}' | jsonfilter -e '@.code')
+if [ "$status" -ne 0 ]; then
+    logger -p daemon.notice -t "pptpd" "failed ubus call, status: $status"
+fi
+
+[ -f /var/state/pptp/peer.${PEERNAME}.status ] && rm -f /var/state/pptp/peer.${PEERNAME}.status
+
+exit 0

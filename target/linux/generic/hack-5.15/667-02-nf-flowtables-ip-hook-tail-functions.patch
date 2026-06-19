@@ -1,0 +1,236 @@
+net: netfilter: flowtables: split IP hook fn tails into separate functions
+
+Split the xmit part of 'nf_flow_offload_ip{,v6}_hook' into nf_flow_offload_ip{,v6}_hook_tail'.
+Allows code reuse with XFRM output offload implementation.
+
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -240,13 +240,12 @@ static inline bool nf_flow_dst_check(str
+ 	return dst_check(tuple->dst_cache, tuple->dst_cookie);
+ }
+ 
+-static unsigned int nf_flow_xmit_xfrm(struct sk_buff *skb,
+-				      const struct nf_hook_state *state,
++static unsigned int nf_flow_xmit_xfrm(struct sk_buff *skb, struct net *net,
+ 				      struct dst_entry *dst)
+ {
+ 	skb_orphan(skb);
+ 	skb_dst_set_noref(skb, dst);
+-	dst_output(state->net, state->sk, skb);
++	dst_output(net, NULL, skb);
+ 	return NF_STOLEN;
+ }
+ 
+@@ -307,23 +306,59 @@ static void nf_flow_encap_pop(struct sk_
+ }
+ 
+ static unsigned int nf_flow_queue_xmit(struct net *net, struct sk_buff *skb,
+-				       const struct flow_offload_tuple_rhash *tuplehash,
++				       const struct flow_offload_tuple *tuple,
+ 				       unsigned short type)
+ {
+ 	struct net_device *outdev;
+ 
+-	outdev = dev_get_by_index_rcu(net, tuplehash->tuple.out.ifidx);
++	outdev = dev_get_by_index_rcu(net, tuple->out.ifidx);
+ 	if (!outdev)
+ 		return NF_DROP;
+ 
+ 	skb->dev = outdev;
+-	dev_hard_header(skb, skb->dev, type, tuplehash->tuple.out.h_dest,
+-			tuplehash->tuple.out.h_source, skb->len);
++	dev_hard_header(skb, skb->dev, type, tuple->out.h_dest,
++			tuple->out.h_source, skb->len);
+ 	dev_queue_xmit(skb);
+ 
+ 	return NF_STOLEN;
+ }
+ 
++unsigned int nf_flow_offload_ip_hook_tail(struct sk_buff *skb,
++					  struct flow_offload *flow,
++					  struct flow_offload_tuple *tuple)
++{
++	struct net_device *outdev;
++	struct rtable *rt;
++	struct net *net = nf_ct_net(flow->ct);
++	__be32 nexthop;
++	int ret;
++
++	if (unlikely(tuple->xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
++		rt = (struct rtable *)tuple->dst_cache;
++		return nf_flow_xmit_xfrm(skb, net, &rt->dst);
++	}
++
++	switch (tuple->xmit_type) {
++	case FLOW_OFFLOAD_XMIT_NEIGH:
++		rt = (struct rtable *)tuple->dst_cache;
++		outdev = rt->dst.dev;
++		skb->dev = outdev;
++		nexthop = rt_nexthop(
++			rt, flow->tuplehash[!tuple->dir].tuple.src_v4.s_addr);
++		skb_dst_set_noref(skb, &rt->dst);
++		neigh_xmit(NEIGH_ARP_TABLE, outdev, &nexthop, skb);
++		ret = NF_STOLEN;
++		break;
++	case FLOW_OFFLOAD_XMIT_DIRECT:
++		ret = nf_flow_queue_xmit(net, skb, tuple, ETH_P_IP);
++		if (ret == NF_DROP)
++			flow_offload_teardown(flow);
++		break;
++	}
++
++	return ret;
++}
++
+ unsigned int
+ nf_flow_offload_ip_hook(void *priv, struct sk_buff *skb,
+ 			const struct nf_hook_state *state)
+@@ -333,13 +368,9 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 	struct flow_offload_tuple tuple = {};
+ 	enum flow_offload_tuple_dir dir;
+ 	struct flow_offload *flow;
+-	struct net_device *outdev;
+ 	u32 hdrsize, offset = 0;
+ 	unsigned int thoff, mtu;
+-	struct rtable *rt;
+ 	struct iphdr *iph;
+-	__be32 nexthop;
+-	int ret;
+ 
+ 	if (skb->protocol != htons(ETH_P_IP) &&
+ 	    !nf_flow_skb_encap_protocol(skb, htons(ETH_P_IP), &offset))
+@@ -390,29 +421,7 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 	IPCB(skb)->iif = skb->dev->ifindex;
+ 	IPCB(skb)->flags = IPSKB_FORWARDED;
+ 
+-	if (unlikely(tuplehash->tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+-		rt = (struct rtable *)tuplehash->tuple.dst_cache;
+-		return nf_flow_xmit_xfrm(skb, state, &rt->dst);
+-	}
+-
+-	switch (tuplehash->tuple.xmit_type) {
+-	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		rt = (struct rtable *)tuplehash->tuple.dst_cache;
+-		outdev = rt->dst.dev;
+-		skb->dev = outdev;
+-		nexthop = rt_nexthop(rt, flow->tuplehash[!dir].tuple.src_v4.s_addr);
+-		skb_dst_set_noref(skb, &rt->dst);
+-		neigh_xmit(NEIGH_ARP_TABLE, outdev, &nexthop, skb);
+-		ret = NF_STOLEN;
+-		break;
+-	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		ret = nf_flow_queue_xmit(state->net, skb, tuplehash, ETH_P_IP);
+-		if (ret == NF_DROP)
+-			flow_offload_teardown(flow);
+-		break;
+-	}
+-
+-	return ret;
++	return nf_flow_offload_ip_hook_tail(skb, flow, &tuplehash->tuple);
+ }
+ EXPORT_SYMBOL_GPL(nf_flow_offload_ip_hook);
+ 
+@@ -569,6 +578,42 @@ static int nf_flow_tuple_ipv6(struct sk_
+ 	return 0;
+ }
+ 
++unsigned int nf_flow_offload_ipv6_hook_tail(struct sk_buff *skb,
++					   struct flow_offload *flow,
++					   struct flow_offload_tuple *tuple)
++{
++	struct net_device *outdev;
++	struct rt6_info *rt;
++	struct net *net = nf_ct_net(flow->ct);
++	const struct in6_addr *nexthop;
++	int ret;
++
++	if (unlikely(tuple->xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
++		rt = (struct rt6_info *)tuple->dst_cache;
++		return nf_flow_xmit_xfrm(skb, net, &rt->dst);
++	}
++
++	switch (tuple->xmit_type) {
++	case FLOW_OFFLOAD_XMIT_NEIGH:
++		rt = (struct rt6_info *)tuple->dst_cache;
++		outdev = rt->dst.dev;
++		skb->dev = outdev;
++		nexthop = rt6_nexthop(
++			rt, &flow->tuplehash[!tuple->dir].tuple.src_v6);
++		skb_dst_set_noref(skb, &rt->dst);
++		neigh_xmit(NEIGH_ND_TABLE, outdev, nexthop, skb);
++		ret = NF_STOLEN;
++		break;
++	case FLOW_OFFLOAD_XMIT_DIRECT:
++		ret = nf_flow_queue_xmit(net, skb, tuple, ETH_P_IPV6);
++		if (ret == NF_DROP)
++			flow_offload_teardown(flow);
++		break;
++	}
++
++	return ret;
++}
++
+ unsigned int
+ nf_flow_offload_ipv6_hook(void *priv, struct sk_buff *skb,
+ 			  const struct nf_hook_state *state)
+@@ -577,14 +622,10 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 	struct nf_flowtable *flow_table = priv;
+ 	struct flow_offload_tuple tuple = {};
+ 	enum flow_offload_tuple_dir dir;
+-	const struct in6_addr *nexthop;
+ 	struct flow_offload *flow;
+-	struct net_device *outdev;
+ 	unsigned int thoff, mtu;
+ 	u32 hdrsize, offset = 0;
+ 	struct ipv6hdr *ip6h;
+-	struct rt6_info *rt;
+-	int ret;
+ 
+ 	if (skb->protocol != htons(ETH_P_IPV6) &&
+ 	    !nf_flow_skb_encap_protocol(skb, htons(ETH_P_IPV6), &offset))
+@@ -634,28 +675,6 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 	IP6CB(skb)->iif = skb->dev->ifindex;
+ 	IP6CB(skb)->flags = IP6SKB_FORWARDED;
+ 
+-	if (unlikely(tuplehash->tuple.xmit_type == FLOW_OFFLOAD_XMIT_XFRM)) {
+-		rt = (struct rt6_info *)tuplehash->tuple.dst_cache;
+-		return nf_flow_xmit_xfrm(skb, state, &rt->dst);
+-	}
+-
+-	switch (tuplehash->tuple.xmit_type) {
+-	case FLOW_OFFLOAD_XMIT_NEIGH:
+-		rt = (struct rt6_info *)tuplehash->tuple.dst_cache;
+-		outdev = rt->dst.dev;
+-		skb->dev = outdev;
+-		nexthop = rt6_nexthop(rt, &flow->tuplehash[!dir].tuple.src_v6);
+-		skb_dst_set_noref(skb, &rt->dst);
+-		neigh_xmit(NEIGH_ND_TABLE, outdev, nexthop, skb);
+-		ret = NF_STOLEN;
+-		break;
+-	case FLOW_OFFLOAD_XMIT_DIRECT:
+-		ret = nf_flow_queue_xmit(state->net, skb, tuplehash, ETH_P_IPV6);
+-		if (ret == NF_DROP)
+-			flow_offload_teardown(flow);
+-		break;
+-	}
+-
+-	return ret;
++	return nf_flow_offload_ipv6_hook_tail(skb, flow, &tuplehash->tuple);
+ }
+ EXPORT_SYMBOL_GPL(nf_flow_offload_ipv6_hook);
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -389,6 +389,13 @@ unsigned int nf_flow_offload_ip_hook(voi
+ unsigned int nf_flow_offload_ipv6_hook(void *priv, struct sk_buff *skb,
+ 				       const struct nf_hook_state *state);
+ 
++unsigned int nf_flow_offload_ip_hook_tail(struct sk_buff *skb,
++					  struct flow_offload *flow,
++					  struct flow_offload_tuple *tuple);
++unsigned int nf_flow_offload_ipv6_hook_tail(struct sk_buff *skb,
++					   struct flow_offload *flow,
++					   struct flow_offload_tuple *tuple);
++
+ #define MODULE_ALIAS_NF_FLOWTABLE(family)	\
+ 	MODULE_ALIAS("nf-flowtable-" __stringify(family))
+ 

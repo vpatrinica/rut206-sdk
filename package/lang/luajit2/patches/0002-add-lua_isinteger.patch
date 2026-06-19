@@ -1,0 +1,29 @@
+diff --git a/src/lj_api.c b/src/lj_api.c
+index d4048d79..50a84fdc 100644
+--- a/src/lj_api.c
++++ b/src/lj_api.c
+@@ -348,6 +348,12 @@ LUA_API int lua_lessthan(lua_State *L, int idx1, int idx2)
+   }
+ }
+ 
++LUA_API int lua_isinteger(lua_State *L, int idx)
++{
++  cTValue *o = index2adr(L, idx);
++  return tvisint(o);
++}
++
+ LUA_API lua_Number lua_tonumber(lua_State *L, int idx)
+ {
+   cTValue *o = index2adr(L, idx);
+diff --git a/src/lua.h b/src/lua.h
+index 6d1634d1..217d9d22 100644
+--- a/src/lua.h
++++ b/src/lua.h
+@@ -134,6 +134,7 @@ LUA_API void  (lua_xmove) (lua_State *from, lua_State *to, int n);
+ */
+ 
+ LUA_API int             (lua_isnumber) (lua_State *L, int idx);
++LUA_API int             (lua_isinteger) (lua_State *L, int idx);
+ LUA_API int             (lua_isstring) (lua_State *L, int idx);
+ LUA_API int             (lua_iscfunction) (lua_State *L, int idx);
+ LUA_API int             (lua_isuserdata) (lua_State *L, int idx);

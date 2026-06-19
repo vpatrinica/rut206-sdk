@@ -1,0 +1,62 @@
+Index: mt76_515-2023-09-18-2afc7285/mt7603/debugfs.c
+===================================================================
+--- mt76_515-2023-09-18-2afc7285.orig/mt7603/debugfs.c	2024-02-19 13:33:58.351449154 +0200
++++ mt76_515-2023-09-18-2afc7285/mt7603/debugfs.c	2024-02-19 13:34:06.263396392 +0200
+@@ -93,6 +93,37 @@
+ 
+ DEFINE_SHOW_ATTRIBUTE(mt7603_ampdu_stat);
+ 
++static int
++mt7603_wireless_reset(void *data, u64 val)
++{
++	struct mt7603_dev *dev = data;
++	void __iomem *io_rststat;
++	u32 reg_val;
++
++	io_rststat = ioremap(MT_RSTSTAT, SZ_4);
++
++	if (!io_rststat)
++		return -ENOMEM;
++
++	reg_val = readl(io_rststat);
++
++	if (!!val) {
++		dev_info(dev->mt76.dev, "Enabling N9 subsystem reset\n");
++		reg_val |= BIT(9); // set WDRST_TON9_EN
++	} else {
++		dev_info(dev->mt76.dev, "Disabling N9 subsystem reset\n");
++		reg_val &= ~BIT(9); // unset WDRST_TON9_EN
++	}
++
++	writel(reg_val, io_rststat);
++	iounmap(io_rststat);
++
++	return 0;
++}
++
++DEFINE_DEBUGFS_ATTRIBUTE(fops_wireless_reset, NULL,
++			 mt7603_wireless_reset, "%lld\n");
++
+ void mt7603_init_debugfs(struct mt7603_dev *dev)
+ {
+ 	struct dentry *dir;
+@@ -115,4 +146,6 @@
+ 			    &dev->sensitivity_limit);
+ 	debugfs_create_bool("dynamic_sensitivity", 0600, dir,
+ 			    &dev->dynamic_sensitivity);
++	debugfs_create_file("full_reset", 0200, dir, dev,
++				    &fops_wireless_reset);
+ }
+Index: mt76_515-2023-09-18-2afc7285/mt7603/regs.h
+===================================================================
+--- mt76_515-2023-09-18-2afc7285.orig/mt7603/regs.h	2024-02-19 13:33:58.351449154 +0200
++++ mt76_515-2023-09-18-2afc7285/mt7603/regs.h	2024-02-19 13:33:58.347449181 +0200
+@@ -7,6 +7,8 @@
+ #define MT_HW_CHIPID			0x1008
+ #define MT_TOP_MISC2			0x1134
+ 
++#define MT_RSTSTAT			0x10000038
++
+ #define MT_MCU_BASE			0x2000
+ #define MT_MCU(ofs)			(MT_MCU_BASE + (ofs))
+ 

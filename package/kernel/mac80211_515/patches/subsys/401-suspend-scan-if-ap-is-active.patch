@@ -1,0 +1,43 @@
+Index: backports-6.5/net/mac80211/scan.c
+===================================================================
+--- backports-6.5.orig/net/mac80211/scan.c	2024-02-14 09:32:16.416643252 +0200
++++ backports-6.5/net/mac80211/scan.c	2024-02-14 09:33:29.731933399 +0200
+@@ -861,9 +861,13 @@
+ 	enum mac80211_scan_state next_scan_state;
+ 	struct cfg80211_scan_request *scan_req;
+ 
++	scan_req = rcu_dereference_protected(local->scan_req,
++					     lockdep_is_held(&local->mtx));
++
+ 	/*
+ 	 * check if at least one STA interface is associated,
+-	 * check if at least one STA interface has pending tx frames
++	 * or there is at least one active AP
++	 * check if at least one STA or AP interface has pending tx frames
+ 	 * and grab the lowest used beacon interval
+ 	 */
+ 	mutex_lock(&local->iflist_mtx);
+@@ -880,13 +884,20 @@
+ 					break;
+ 				}
+ 			}
++		} else if (sdata->vif.type == NL80211_IFTYPE_AP && 
++				   scan_req->n_channels < 15) {
++			if (sdata->u.ap.active) {
++				associated = true;
++
++				if (!qdisc_all_tx_empty(sdata->dev)) {
++					tx_empty = false;
++					break;
++				}
++			}
+ 		}
+ 	}
+ 	mutex_unlock(&local->iflist_mtx);
+ 
+-	scan_req = rcu_dereference_protected(local->scan_req,
+-					     lockdep_is_held(&local->mtx));
+-
+ 	next_chan = scan_req->channels[local->scan_channel_idx];
+ 
+ 	/*

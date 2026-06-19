@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ -f $UCI_CONFIG_DIR/post_get ]; then
+	rm $UCI_CONFIG_DIR/post_get
+fi
+
+[ -f /etc/package_restore.txt ] && {
+	sed -i '/io_post_get - I\/O POST\/GET/d' /etc/package_restore.txt
+	sed -i '/mobile_post_get - Mobile POST\/GET/d' /etc/package_restore.txt
+}
+
+exit 0

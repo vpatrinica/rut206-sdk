@@ -1,0 +1,52 @@
+--- a/fs/overlayfs/inode.c
++++ b/fs/overlayfs/inode.c
+@@ -16,6 +16,7 @@
+ #include <linux/namei.h>
+ #include "overlayfs.h"
+ 
++static bool error_logged = false;
+ 
+ int ovl_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+ 		struct iattr *attr)
+@@ -1141,7 +1142,7 @@ struct inode *ovl_get_inode(struct super
+ 
+ 		inode = ovl_iget5(sb, oip->newinode, key);
+ 		if (!inode)
+-			goto out_err;
++			goto out_msg;
+ 		if (!(inode->i_state & I_NEW)) {
+ 			/*
+ 			 * Verify that the underlying files stored in the inode
+@@ -1151,6 +1152,11 @@ struct inode *ovl_get_inode(struct super
+ 					      true)) {
+ 				iput(inode);
+ 				err = -ESTALE;
++
++				if (!error_logged) {
++					error_logged = true;
++					goto out_msg;
++				}
+ 				goto out_err;
+ 			}
+ 
+@@ -1170,7 +1176,7 @@ struct inode *ovl_get_inode(struct super
+ 		inode = new_inode(sb);
+ 		if (!inode) {
+ 			err = -ENOMEM;
+-			goto out_err;
++			goto out_msg;
+ 		}
+ 		ino = realinode->i_ino;
+ 		fsid = lowerpath->layer->fsid;
+@@ -1205,9 +1211,9 @@ struct inode *ovl_get_inode(struct super
+ 		unlock_new_inode(inode);
+ out:
+ 	return inode;
+-
+-out_err:
++out_msg:
+ 	pr_warn_ratelimited("failed to get inode (%i)\n", err);
++out_err:
+ 	inode = ERR_PTR(err);
+ 	goto out;
+ }

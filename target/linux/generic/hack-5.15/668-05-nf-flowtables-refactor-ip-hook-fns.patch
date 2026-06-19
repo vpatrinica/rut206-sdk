@@ -1,0 +1,187 @@
+net: netfilter: flowtables: refactor ip hook fn's to allow new flow types
+
+Split route type action code into separate functions. Add easy suuport
+for adding implementation for new flow types.
+
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -359,33 +359,16 @@ unsigned int nf_flow_offload_ip_hook_tai
+ 	return ret;
+ }
+ 
+-unsigned int
+-nf_flow_offload_ip_hook(void *priv, struct sk_buff *skb,
+-			const struct nf_hook_state *state)
++static unsigned int
++nf_flow_offload_ip_hook_route(struct nf_flowtable *flow_table,
++			      struct sk_buff *skb, struct flow_offload *flow,
++			      enum flow_offload_tuple_dir dir, u32 hdrsize,
++			      u32 offset)
+ {
+-	struct flow_offload_tuple_rhash *tuplehash;
+-	struct nf_flowtable *flow_table = priv;
+-	struct flow_offload_tuple tuple = {};
+-	enum flow_offload_tuple_dir dir;
+-	struct flow_offload *flow;
+-	u32 hdrsize, offset = 0;
++	struct flow_offload_tuple_rhash *tuplehash = &flow->tuplehash[dir];
+ 	unsigned int thoff, mtu;
+ 	struct iphdr *iph;
+ 
+-	if (skb->protocol != htons(ETH_P_IP) &&
+-	    !nf_flow_skb_encap_protocol(skb, htons(ETH_P_IP), &offset))
+-		return NF_ACCEPT;
+-
+-	if (nf_flow_tuple_ip(skb, state->in, &tuple, &hdrsize, offset) < 0)
+-		return NF_ACCEPT;
+-
+-	tuplehash = flow_offload_lookup(flow_table, &tuple);
+-	if (tuplehash == NULL)
+-		return NF_ACCEPT;
+-
+-	dir = tuplehash->tuple.dir;
+-	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+-
+ 	mtu = flow->tuplehash[dir].tuple.route.mtu + offset;
+ 	if (unlikely(nf_flow_exceeds_mtu(skb, mtu)))
+ 		return NF_ACCEPT;
+@@ -428,6 +411,50 @@ nf_flow_offload_ip_hook(void *priv, stru
+ 
+ 	return nf_flow_offload_ip_hook_tail(skb, flow, &tuplehash->tuple);
+ }
++
++static unsigned int
++nf_flow_offload_ip_hook_action(struct nf_flowtable *flow_table,
++			       struct sk_buff *skb, struct flow_offload *flow,
++			       enum flow_offload_tuple_dir dir, u32 hdrsize,
++			       u32 offset)
++{
++	switch (flow->type) {
++	case NF_FLOW_OFFLOAD_ROUTE:
++		return nf_flow_offload_ip_hook_route(flow_table, skb, flow, dir,
++						     hdrsize, offset);
++	default:
++		return NF_ACCEPT;
++	}
++}
++
++unsigned int
++nf_flow_offload_ip_hook(void *priv, struct sk_buff *skb,
++			const struct nf_hook_state *state)
++{
++	struct flow_offload_tuple_rhash *tuplehash;
++	struct nf_flowtable *flow_table = priv;
++	struct flow_offload_tuple tuple = {};
++	enum flow_offload_tuple_dir dir;
++	struct flow_offload *flow;
++	u32 hdrsize, offset = 0;
++
++	if (skb->protocol != htons(ETH_P_IP) &&
++	    !nf_flow_skb_encap_protocol(skb, htons(ETH_P_IP), &offset))
++		return NF_ACCEPT;
++
++	if (nf_flow_tuple_ip(skb, state->in, &tuple, &hdrsize, offset) < 0)
++		return NF_ACCEPT;
++
++	tuplehash = flow_offload_lookup(flow_table, &tuple);
++	if (tuplehash == NULL)
++		return NF_ACCEPT;
++
++	dir = tuplehash->tuple.dir;
++	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
++
++	return nf_flow_offload_ip_hook_action(flow_table, skb, flow, dir,
++					      hdrsize, offset);
++}
+ EXPORT_SYMBOL_GPL(nf_flow_offload_ip_hook);
+ 
+ static void nf_flow_nat_ipv6_tcp(struct sk_buff *skb, unsigned int thoff,
+@@ -619,33 +646,16 @@ unsigned int nf_flow_offload_ipv6_hook_t
+ 	return ret;
+ }
+ 
+-unsigned int
+-nf_flow_offload_ipv6_hook(void *priv, struct sk_buff *skb,
+-			  const struct nf_hook_state *state)
++static unsigned int
++nf_flow_offload_ipv6_hook_route(struct nf_flowtable *flow_table,
++			      struct sk_buff *skb, struct flow_offload *flow,
++			      enum flow_offload_tuple_dir dir, u32 hdrsize,
++			      u32 offset)
+ {
+-	struct flow_offload_tuple_rhash *tuplehash;
+-	struct nf_flowtable *flow_table = priv;
+-	struct flow_offload_tuple tuple = {};
+-	enum flow_offload_tuple_dir dir;
+-	struct flow_offload *flow;
++	struct flow_offload_tuple_rhash *tuplehash = &flow->tuplehash[dir];
+ 	unsigned int thoff, mtu;
+-	u32 hdrsize, offset = 0;
+ 	struct ipv6hdr *ip6h;
+ 
+-	if (skb->protocol != htons(ETH_P_IPV6) &&
+-	    !nf_flow_skb_encap_protocol(skb, htons(ETH_P_IPV6), &offset))
+-		return NF_ACCEPT;
+-
+-	if (nf_flow_tuple_ipv6(skb, state->in, &tuple, &hdrsize, offset) < 0)
+-		return NF_ACCEPT;
+-
+-	tuplehash = flow_offload_lookup(flow_table, &tuple);
+-	if (tuplehash == NULL)
+-		return NF_ACCEPT;
+-
+-	dir = tuplehash->tuple.dir;
+-	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
+-
+ 	mtu = flow->tuplehash[dir].tuple.route.mtu + offset;
+ 	if (unlikely(nf_flow_exceeds_mtu(skb, mtu)))
+ 		return NF_ACCEPT;
+@@ -687,4 +697,48 @@ nf_flow_offload_ipv6_hook(void *priv, st
+ 
+ 	return nf_flow_offload_ipv6_hook_tail(skb, flow, &tuplehash->tuple);
+ }
++
++static unsigned int
++nf_flow_offload_ipv6_hook_action(struct nf_flowtable *flow_table,
++				 struct sk_buff *skb, struct flow_offload *flow,
++				 enum flow_offload_tuple_dir dir, u32 hdrsize,
++				 u32 offset)
++{
++	switch (flow->type) {
++	case NF_FLOW_OFFLOAD_ROUTE:
++		return nf_flow_offload_ipv6_hook_route(flow_table, skb, flow,
++						       dir, hdrsize, offset);
++	default:
++		return NF_ACCEPT;
++	}
++}
++
++unsigned int
++nf_flow_offload_ipv6_hook(void *priv, struct sk_buff *skb,
++			  const struct nf_hook_state *state)
++{
++	struct flow_offload_tuple_rhash *tuplehash;
++	struct nf_flowtable *flow_table = priv;
++	struct flow_offload_tuple tuple = {};
++	enum flow_offload_tuple_dir dir;
++	struct flow_offload *flow;
++	u32 hdrsize, offset = 0;
++
++	if (skb->protocol != htons(ETH_P_IPV6) &&
++	    !nf_flow_skb_encap_protocol(skb, htons(ETH_P_IPV6), &offset))
++		return NF_ACCEPT;
++
++	if (nf_flow_tuple_ipv6(skb, state->in, &tuple, &hdrsize, offset) < 0)
++		return NF_ACCEPT;
++
++	tuplehash = flow_offload_lookup(flow_table, &tuple);
++	if (tuplehash == NULL)
++		return NF_ACCEPT;
++
++	dir = tuplehash->tuple.dir;
++	flow = container_of(tuplehash, struct flow_offload, tuplehash[dir]);
++
++	return nf_flow_offload_ipv6_hook_action(flow_table, skb, flow, dir,
++						hdrsize, offset);
++}
+ EXPORT_SYMBOL_GPL(nf_flow_offload_ipv6_hook);

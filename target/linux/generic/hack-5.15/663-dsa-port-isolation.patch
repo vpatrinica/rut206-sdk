@@ -1,0 +1,236 @@
+From 29135536a183a1b356771fbe93b2aa1e319bbff7 Mon Sep 17 00:00:00 2001
+From: Joris Vaisvila <joris.vaisvila@teltonika.lt>
+Date: Tue, 3 Dec 2024 16:24:52 +0200
+Subject: [PATCH 1/1] dsa port isolation
+
+---
+ drivers/net/dsa/mt7530.c |  4 +--
+ include/net/dsa.h        |  1 +
+ net/dsa/dsa_priv.h       |  1 +
+ net/dsa/port.c           | 21 +++++++----
+ net/dsa/slave.c          | 75 ++++++++++++++++++++++++++++++++++++++++
+ net/dsa/switch.c         | 18 ++++++----
+ 6 files changed, 105 insertions(+), 15 deletions(-)
+
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -1445,7 +1445,7 @@ mt7530_port_bridge_join(struct dsa_switc
+ 		 * same bridge. If the port is disabled, port matrix is kept
+ 		 * and not being setup until the port becomes enabled.
+ 		 */
+-		if (other_dp->bridge_dev != bridge)
++		if (other_dp->bridge_dev != bridge || other_dp->isolated)
+ 			continue;
+ 
+ 		if (priv->ports[other_port].enable)
+@@ -1577,7 +1577,7 @@ mt7530_port_bridge_leave(struct dsa_swit
+ 		 * in the same bridge. If the port is disabled, port matrix
+ 		 * is kept and not being setup until the port becomes enabled.
+ 		 */
+-		if (other_dp->bridge_dev != bridge)
++		if (other_dp->bridge_dev != bridge || other_dp->isolated)
+ 			continue;
+ 
+ 		if (priv->ports[other_port].enable)
+--- a/include/net/dsa.h
++++ b/include/net/dsa.h
+@@ -253,6 +253,7 @@ struct dsa_port {
+ 	struct device_node	*dn;
+ 	unsigned int		ageing_time;
+ 	bool			vlan_filtering;
++	bool			isolated;
+ 	/* Managed by DSA on user ports and by drivers on CPU and DSA ports */
+ 	bool			learning;
+ 	u8			stp_state;
+--- a/net/dsa/dsa_priv.h
++++ b/net/dsa/dsa_priv.h
+@@ -20,6 +20,7 @@ enum {
+ 	DSA_NOTIFIER_AGEING_TIME,
+ 	DSA_NOTIFIER_BRIDGE_JOIN,
+ 	DSA_NOTIFIER_BRIDGE_LEAVE,
++	DSA_NOTIFIER_BRIDGE_VLAN_SYNC,
+ 	DSA_NOTIFIER_FDB_ADD,
+ 	DSA_NOTIFIER_FDB_DEL,
+ 	DSA_NOTIFIER_HOST_FDB_ADD,
+--- a/net/dsa/port.c
++++ b/net/dsa/port.c
+@@ -356,11 +356,13 @@ int dsa_port_bridge_join(struct dsa_port
+ 	 */
+ 	dp->bridge_dev = br;
+ 
+-	brport_dev = dsa_port_to_bridge_port(dp);
++	if (!dp->isolated) {
++		err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_JOIN, &info);
++		if (err)
++			goto out_rollback;
++	}
+ 
+-	err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_JOIN, &info);
+-	if (err)
+-		goto out_rollback;
++	brport_dev = dsa_port_to_bridge_port(dp);
+ 
+ 	tx_fwd_offload = dsa_port_bridge_tx_fwd_offload(dp, br);
+ 
+@@ -418,10 +420,17 @@ void dsa_port_bridge_leave(struct dsa_po
+ 
+ 	dsa_port_bridge_tx_fwd_unoffload(dp, br);
+ 
+-	err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_LEAVE, &info);
++	if (!dp->isolated) {
++		err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_LEAVE, &info);
++		if (err)
++			dev_err(dp->ds->dev,
++				"port %d failed to notify DSA_NOTIFIER_BRIDGE_LEAVE: %pe\n",
++				dp->index, ERR_PTR(err));
++	}
++	err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_VLAN_SYNC, &info);
+ 	if (err)
+ 		dev_err(dp->ds->dev,
+-			"port %d failed to notify DSA_NOTIFIER_BRIDGE_LEAVE: %pe\n",
++			"port %d failed to notify DSA_NOTIFIER_BRIDGE_VLAN_SYNC: %pe\n",
+ 			dp->index, ERR_PTR(err));
+ 
+ 	dsa_port_switchdev_unsync_attrs(dp);
+--- a/net/dsa/slave.c
++++ b/net/dsa/slave.c
+@@ -1924,6 +1924,72 @@ int dsa_slave_resume(struct net_device *
+ 	return 0;
+ }
+ 
++static ssize_t isolation_show(struct device *d, struct device_attribute *attr,
++			      char *buf)
++{
++	bool isolated;
++	struct net_device *dev = to_net_dev(d);
++	struct dsa_port *dp = dsa_slave_to_port(dev);
++	if (!rtnl_trylock())
++		return restart_syscall();
++	isolated = dp->isolated;
++	rtnl_unlock();
++	return sprintf(buf, "%c\n", isolated ? 'Y' : 'N');
++}
++
++static ssize_t isolation_store(struct device *d, struct device_attribute *attr,
++			       const char *buf, size_t count)
++{
++	bool bv;
++	int err;
++	struct net_device *dev = to_net_dev(d);
++	struct dsa_port *dp = dsa_slave_to_port(dev);
++	struct dsa_notifier_bridge_info info;
++
++	err = kstrtobool(buf, &bv);
++	if (err)
++		return err;
++
++	if (!rtnl_trylock())
++		return restart_syscall();
++
++	if (dp->isolated == bv)
++		goto out_unlock;
++
++	dp->isolated = bv;
++
++	if (!dp->bridge_dev)
++		goto out_unlock;
++
++	info.tree_index = dp->ds->dst->index;
++	info.sw_index = dp->ds->index;
++	info.port = dp->index;
++	info.br = dp->bridge_dev;
++
++	if (bv)
++		err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_LEAVE, &info);
++	else
++		err = dsa_broadcast(DSA_NOTIFIER_BRIDGE_JOIN, &info);
++
++out_unlock:
++	rtnl_unlock();
++	if (err)
++		return err;
++	return count;
++}
++
++static DEVICE_ATTR_RW(isolation);
++
++static struct attribute *dsa_slave_attrs[] = {
++	&dev_attr_isolation.attr,
++	NULL
++};
++
++static const struct attribute_group port_group = {
++	.name = "dsa_port",
++	.attrs = dsa_slave_attrs,
++};
++
+ int dsa_slave_create(struct dsa_port *port)
+ {
+ 	const struct dsa_port *cpu_dp = port->cpu_dp;
+@@ -2009,6 +2075,12 @@ int dsa_slave_create(struct dsa_port *po
+ 	if (ret)
+ 		goto out_unregister;
+ 
++	if (dsa_is_user_port(ds, port->index))
++		ret = sysfs_create_group(&slave_dev->dev.kobj, &port_group);
++
++	if (ret)
++		goto out_unregister;
++
+ 	return 0;
+ 
+ out_unregister:
+@@ -2033,6 +2105,9 @@ void dsa_slave_destroy(struct net_device
+ 	struct dsa_port *dp = dsa_slave_to_port(slave_dev);
+ 	struct dsa_slave_priv *p = netdev_priv(slave_dev);
+ 
++	if (dsa_is_user_port(dp->ds, dp->index))
++		sysfs_remove_group(&slave_dev->dev.kobj, &port_group);
++
+ 	netif_carrier_off(slave_dev);
+ 	rtnl_lock();
+ 	netdev_upper_dev_unlink(master, slave_dev);
+--- a/net/dsa/switch.c
++++ b/net/dsa/switch.c
+@@ -168,7 +168,6 @@ static int dsa_switch_bridge_leave(struc
+ 				   struct dsa_notifier_bridge_info *info)
+ {
+ 	struct dsa_switch_tree *dst = ds->dst;
+-	int err;
+ 
+ 	if (dst->index == info->tree_index && ds->index == info->sw_index &&
+ 	    ds->ops->port_bridge_leave)
+@@ -180,15 +179,17 @@ static int dsa_switch_bridge_leave(struc
+ 						info->sw_index, info->port,
+ 						info->br);
+ 
+-	if (ds->dst->index == info->tree_index && ds->index == info->sw_index) {
+-		err = dsa_switch_sync_vlan_filtering(ds, info);
+-		if (err)
+-			return err;
+-	}
+-
+ 	return dsa_tag_8021q_bridge_leave(ds, info);
+ }
+ 
++static int dsa_switch_vlan_sync(struct dsa_switch *ds,
++				struct dsa_notifier_bridge_info *info)
++{
++	if (ds->dst->index == info->tree_index && ds->index == info->sw_index)
++		return dsa_switch_sync_vlan_filtering(ds, info);
++	return 0;
++}
++
+ /* Matches for all upstream-facing ports (the CPU port and all upstream-facing
+  * DSA links) that sit between the targeted port on which the notifier was
+  * emitted and its dedicated CPU port.
+@@ -764,6 +765,9 @@ static int dsa_switch_event(struct notif
+ 	case DSA_NOTIFIER_BRIDGE_LEAVE:
+ 		err = dsa_switch_bridge_leave(ds, info);
+ 		break;
++	case DSA_NOTIFIER_BRIDGE_VLAN_SYNC:
++		err = dsa_switch_vlan_sync(ds, info);
++		break;
+ 	case DSA_NOTIFIER_FDB_ADD:
+ 		err = dsa_switch_fdb_add(ds, info);
+ 		break;

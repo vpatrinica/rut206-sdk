@@ -1,0 +1,245 @@
+#!/usr/bin/luajit
+local nixio = require "nixio"
+local util = require "vuci.util"
+local i18n = require "luci.i18n"
+local util_tlt = require "vuci.util_tlt"
+local tpl = require "luci.template"
+local uci = require "vuci.uci".cursor()
+local fs = require "nixio.fs"
+local json = require "luci.jsonc"
+
+local function get_instance_id()
+	local server = os.getenv('SERVER_ADDR')
+	if not server then return nil end
+
+	for file in fs.glob("/var/run/chilli/chilli_*.conf") do
+		local content = fs.readfile(file)
+		if content then
+			local cfg = {}
+			for line in content:gmatch("[^\r\n]+") do
+				local key, value = line:match('^(%S+)="(%S+)"')
+				if key and value then
+					cfg[key] = value
+				end
+			end
+			if cfg["uamlisten"] == server then
+				return cfg["instance"]
+			end
+		end
+	end
+	return nil
+end
+
+local function urldecode(s)
+	s = s:gsub('+', ' '):gsub('%%(%x%x)', function(h)
+		return string.char(tonumber(h, 16))
+	end)
+	return s
+end
+
+local function no_action(x)
+	return x
+end
+
+local function parse_query(s, decode)
+	local action = decode and urldecode or no_action
+	local ans = {}
+	for k, v in s:gmatch('([^&=?]-)=([^&=?]+)') do
+		ans[k] = action(v)
+	end
+	return ans
+end
+
+local function find_img(theme_dir, theme, template_theme, name)
+	local upldir = theme_dir .. (template_theme and "/skins/" or "/themes/") .. theme .. "/img/"
+	local files = util_tlt.find(upldir, name .. ".*")
+	if #files > 0 and fs.access(files[1]) then
+		return (template_theme and "/skins/" or "/themes/") .. theme .. "/img/" .. fs.basename(files[1])
+	end
+	return ""
+end
+
+local function get_theme(chilli_theme_dir, theme_conf)
+	if fs.access(chilli_theme_dir .. "/skins/" .. theme_conf) or fs.access(chilli_theme_dir .. "/themes/" .. theme_conf) then
+		return theme_conf
+	end
+	return "default"
+end
+
+local function get_settings(settings_json_path)
+	local settings_content = fs.readfile(settings_json_path)
+	if settings_content then
+		local settings = json.parse(settings_content) or {}
+		return settings or {}
+	end
+	return {}
+end
+
+local function build_tpl_context(theme, theme_dir, cgi_dir, template_theme, params)
+	local media_dir = template_theme and "/skins/" or "/themes/"
+	local variables = {
+		write       = io.write,
+		include     = function(name)
+			if template_theme then
+				tpl.Template(theme_dir .. "/template/" .. name .. ".htm"):render(getfenv(2))
+			else
+				tpl.Template(cgi_dir .. "/themes/" .. theme .. "/" .. name .. ".htm"):render(getfenv(2))
+			end
+		end,
+		translate   = i18n.translate,
+		translatef  = i18n.translatef,
+		export      = function(k, v) if tpl.context.viewns[k] == nil then tpl.context.viewns[k] = v end end,
+		media       = media_dir .. theme,
+		theme       = theme,
+		spinner     = find_img(theme_dir, theme, template_theme, "spinner"),
+		background  = find_img(theme_dir, theme, template_theme, "background"),
+		favicon     = find_img(theme_dir, theme, template_theme, "favicon"),
+		logo        = find_img(theme_dir, theme, template_theme, "logo"),
+		url         = function (addr) return '/cgi-bin/hotspot/' .. addr end
+	}
+
+	return setmetatable(variables, {__index = function(tbl, key)
+		return rawget(tbl, key) or _G[key]
+	end})
+end
+
+local function get_pages(query)
+	return {
+		['userpass'] = function () return '/login' end,
+		['userpass/signup'] = function () return '/signup' end,
+		['tos'] = function () return '/tos' end,
+		['macauth'] = function () return '/login_mac' end,
+		['ssoauth'] = function () return '/login_sso' end,
+		['smsauth'] = function ()
+			if (query.otpstate and query.otpstate == "active") or (query.force and query.force == "login") then
+				return '/otp_login'
+			elseif query.force and query.force == "signup" then
+				return '/otp_signup'
+			end
+			if query.res == "notyet" or query.res == "smssignup_fail" then
+				return '/otp_signup'
+			elseif query.res == "smssuccess" or query.res == "failed" or query.res == "logoff" then
+				return '/otp_login'
+			elseif query.res == "success" or query.res == "already" then
+				return '/success'
+			end
+		end,
+		['smsauth/signup'] = function () return '/otp_signup' end,
+	}
+end
+
+local function handle_js_page(page, params, theme_dir)
+	local file_content = fs.readfile(theme_dir .. "/" .. page)
+	if not file_content then return false end
+	print("Content-Type: text/javascript; charset=utf-8")
+	print("")
+	if page == "HotspotLogin.js" then
+		print("const auth_proto = '" .. params.auth_proto .. "'")
+		print("const uamsecret = '" .. params.uamsecret .. "'")
+	end
+	io.write(file_content)
+	return true
+end
+
+local function handle_css_page(page, params, theme_dir, tpl)
+	local file_content = fs.readfile(theme_dir .. "/" .. page)
+	if not file_content then return false end
+	print("Content-Type: text/css; charset=utf-8")
+	print("")
+	tpl.render(theme_dir .. "/" .. page, params)
+	return true
+end
+
+local function handle_custom_page(page, paths, mime_type)
+	local file_content
+	for _, path in ipairs(util.to_table(paths)) do
+		local file_path = path .. "/" .. page
+		if fs.access(file_path) then
+			file_content = fs.readfile(file_path)
+			break
+		end
+	end
+	if not file_content then return false end
+	print("Content-Type: " .. mime_type)
+	print("Content-Length: " .. #file_content)
+	print("")
+	io.write(file_content)
+	return true
+end
+
+local function main()
+	local CHILLI_THEME_DIR = "/etc/chilli/hotspotlogin"
+	local CHILLI_CGI_DIR = CHILLI_THEME_DIR .. "/cgi-bin"
+
+	local INSTANCE_ID = get_instance_id() or "@chilli[0]"
+
+	local UAMSECRET = uci:get("chilli", INSTANCE_ID, "uamsecret") or ""
+	local AUTH_PROTO = uci:get("landingpage", "general", "auth_proto") or "chap"
+	local THEME_CONF = uci:get("chilli", INSTANCE_ID, "theme") or "default"
+
+	local THEME = get_theme(CHILLI_THEME_DIR, THEME_CONF)
+
+	local SETTINGS_JSON_PATH = CHILLI_THEME_DIR .. "/skins/" .. THEME .. "/settings.json"
+	local TEMPLATE_THEME = fs.access(SETTINGS_JSON_PATH) and true or false
+
+	local URL = os.getenv('REQUEST_URI')
+	URL = URL and (URL:match('^(.+)%?') or URL) or ""
+	local PAGE = URL:match('/cgi%-bin/hotspot/(.+)')
+
+	local QUERY_STRING = os.getenv('QUERY_STRING') or ""
+	local QUERY = parse_query(QUERY_STRING, true)
+	local PARAMS = parse_query(QUERY_STRING, false)
+	PARAMS.query = QUERY_STRING
+	PARAMS.auth_proto = (AUTH_PROTO == 'pap' or AUTH_PROTO == 'chap') and AUTH_PROTO or 'chap'
+	PARAMS.uamsecret = UAMSECRET
+
+	if TEMPLATE_THEME then
+		local settings = get_settings(SETTINGS_JSON_PATH)
+		PARAMS.var = {}
+		for k, v in pairs(settings) do
+			PARAMS.var[k] = v
+		end
+	end
+
+	local PREFIX = CHILLI_CGI_DIR .. '/themes/' .. THEME
+	if TEMPLATE_THEME then
+		PREFIX = CHILLI_THEME_DIR .. '/template'
+	end
+
+	tpl.context.viewns = build_tpl_context(THEME, CHILLI_THEME_DIR, CHILLI_CGI_DIR, TEMPLATE_THEME, PARAMS)
+
+	local PAGES = get_pages(QUERY)
+	if PAGE and PAGE:match("^.*%.js$") then
+		local ret = handle_js_page(PAGE, PARAMS, CHILLI_THEME_DIR)
+		if ret then return end
+	end
+	if PAGE and PAGE:match("^.*%.css$") then
+		local ret = handle_css_page(PAGE, PARAMS, TEMPLATE_THEME and PREFIX or (PREFIX .. "/style"), tpl)
+		if ret then return end
+	end
+	if PAGE and (PAGE:match("^.*%.woff$") or PAGE:match("^.*%.woff2$")) then
+		local ret = handle_custom_page(PAGE, {"/www/fonts", "/usr/local/www/fonts", (TEMPLATE_THEME and PREFIX or (PREFIX .. "/fonts"))}, "application/octet-stream")
+		if ret then return end
+	end
+	if PAGE and PAGE:match("^.*%.svg$") then
+		local ret = handle_custom_page(PAGE, TEMPLATE_THEME and PREFIX or (PREFIX .. "/img"), "image/svg+xml")
+		if ret then return end
+	end
+
+	local FILENAME
+	if PAGE == 'tos' then
+		FILENAME = PREFIX .. (PAGES[PAGE] and PAGES[PAGE]() or '/access_denied')
+	elseif not QUERY.res or not QUERY.uamip or not QUERY.uamport then
+		FILENAME = PREFIX .. '/access_denied'
+	elseif QUERY.res == 'success' or QUERY.res == 'already' then
+		FILENAME = PREFIX .. '/success'
+	else
+		FILENAME = PREFIX .. (PAGES[PAGE] and PAGES[PAGE]() or '/access_denied')
+	end
+
+	print('Content-Type: text/html; charset=utf-8')
+	print('')
+	tpl.render(FILENAME .. ".htm", PARAMS)
+end
+
+main()

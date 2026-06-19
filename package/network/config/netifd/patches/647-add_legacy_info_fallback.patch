@@ -1,0 +1,66 @@
+Index: netifd-2025-05-23-7901e66c/system-linux.c
+===================================================================
+--- netifd-2025-05-23-7901e66c.orig/system-linux.c
++++ netifd-2025-05-23-7901e66c/system-linux.c
+@@ -3263,6 +3263,51 @@ system_get_ethtool_pause(struct device *
+ 	*pause_autoneg = pp.autoneg;
+ }
+ 
++static int system_if_dump_info_legacy(struct device *dev, struct blob_buf *b)
++{
++	struct ethtool_cmd ecmd;
++	struct ifreq ifr;
++	char *s;
++	void *c;
++	memset(&ecmd, 0, sizeof(ecmd));
++	memset(&ifr, 0, sizeof(ifr));
++	strncpy(ifr.ifr_name, dev->ifname, sizeof(ifr.ifr_name) - 1);
++	ifr.ifr_data = (caddr_t)&ecmd;
++	ecmd.cmd = ETHTOOL_GSET;
++
++	if (ioctl(sock_ioctl, SIOCETHTOOL, &ifr) == 0) {
++		c = blobmsg_open_array(b, "link-advertising");
++		system_add_link_modes(1, b, &ecmd.advertising);
++		blobmsg_close_array(b, c);
++
++		c = blobmsg_open_array(b, "link-partner-advertising");
++		system_add_link_modes(1, b, &ecmd.lp_advertising);
++		blobmsg_close_array(b, c);
++
++		c = blobmsg_open_array(b, "link-supported");
++		system_add_link_modes(1, b, &ecmd.supported);
++		blobmsg_close_array(b, c);
++
++		__u32 speed = ethtool_cmd_speed(&ecmd);
++		if (speed &&
++			(speed != (__u32)SPEED_UNKNOWN)) {
++			s = blobmsg_alloc_string_buffer(b, "speed", 10);
++			snprintf(s, 8, "%d%c", speed,
++				ecmd.duplex == DUPLEX_HALF ? 'H' : 'F');
++			blobmsg_add_string_buffer(b);
++		}
++
++		blobmsg_add_u8(b, "autoneg", !!ecmd.autoneg);
++
++		blobmsg_add_u8(b, "hw-tc-offload",
++			ethtool_feature_value(dev->ifname, "hw-tc-offload"));
++
++		system_add_devtype(b, dev->ifname);
++		return 0;
++	}
++	return -EOPNOTSUPP;
++}
++
+ int
+ system_if_dump_info(struct device *dev, struct blob_buf *b)
+ {
+@@ -3288,7 +3333,7 @@ system_if_dump_info(struct device *dev,
+ 	if (ioctl(sock_ioctl, SIOCETHTOOL, &ifr) < 0 ||
+ 	    ecmd.req.link_mode_masks_nwords >= 0 ||
+ 	    ecmd.req.cmd != ETHTOOL_GLINKSETTINGS)
+-		return -EOPNOTSUPP;
++		return system_if_dump_info_legacy(dev, b);
+ 
+ 	ecmd.req.link_mode_masks_nwords = -ecmd.req.link_mode_masks_nwords;
+ 
+

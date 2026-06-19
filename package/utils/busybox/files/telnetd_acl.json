@@ -1,0 +1,6 @@
+{
+	"user": "telnetd",
+	"publish": [
+		"inetd-ubus.*"
+	]
+}

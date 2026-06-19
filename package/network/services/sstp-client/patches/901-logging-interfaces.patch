@@ -1,0 +1,37 @@
+Index: sstp-client-1.0.19/src/libsstp-log/sstp-log-syslog.c
+===================================================================
+--- sstp-client-1.0.19.orig/src/libsstp-log/sstp-log-syslog.c
++++ sstp-client-1.0.19/src/libsstp-log/sstp-log-syslog.c
+@@ -51,6 +51,7 @@ static void sstp_syslog_write(log_ctx_st
+     log_attr_st *table[])
+ {
+     char buf[128];
++    char *ipparam = getenv("SSTP_IPPARAM");
+     struct iovec vec[2];
+     int ret = (-1);
+     int cnt = ( 0);
+@@ -84,7 +85,11 @@ static void sstp_syslog_write(log_ctx_st
+     {
+         return;
+     }
+-    len += sprintf(buf + len, "%s[%d]: ", attr->attr_data, getpid());
++    if (ipparam && ipparam[0] != '\0') {
++        len += sprintf(buf + len, "%s(%s)[%d]: ", attr->attr_data, ipparam, getpid());
++    } else {
++        len += sprintf(buf + len, "%s[%d]: ", attr->attr_data, getpid());
++    }
+ 
+     /* Get the line information */
+     if (ctx->debug)
+Index: sstp-client-1.0.19/src/sstp-option.c
+===================================================================
+--- sstp-client-1.0.19.orig/src/sstp-option.c
++++ sstp-client-1.0.19/src/sstp-option.c
+@@ -170,6 +170,7 @@ static void sstp_parse_option(sstp_option
+ 
+     case 5:
+         ctx->ipparam = strdup(optarg);
++        setenv("SSTP_IPPARAM", ctx->ipparam, 1);
+         break;
+ 
+     case 6:

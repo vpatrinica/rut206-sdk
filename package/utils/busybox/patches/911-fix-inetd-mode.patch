@@ -1,0 +1,54 @@
+Index: busybox-1.34.1/networking/telnetd.c
+===================================================================
+--- busybox-1.34.1.orig/networking/telnetd.c
++++ busybox-1.34.1/networking/telnetd.c
+@@ -153,6 +153,7 @@ enum { BUFSIZE = (4 * 1024 - sizeof(stru
+ /* Globals */
+ struct globals {
+ 	struct tsession *sessions;
++	const char *host;
+ 	const char *loginpath;
+ 	const char *issuefile;
+ #if ENABLE_FEATURE_TELNETD_STANDALONE
+@@ -165,6 +166,7 @@ struct globals {
+ 	setup_common_bufsiz(); \
+ 	G.loginpath = "/bin/login"; \
+ 	G.issuefile = "/etc/issue.net"; \
++	G.host = NULL; \
+ } while (0)
+ 
+ 
+@@ -419,6 +421,7 @@ enum {
+ 	OPT_FOREGROUND = (1 << 6) * ENABLE_FEATURE_TELNETD_STANDALONE, /* -F */
+ 	OPT_SYSLOG     = (1 << 7) * ENABLE_FEATURE_TELNETD_INETD_WAIT, /* -S */
+ 	OPT_WAIT       = (1 << 8) * ENABLE_FEATURE_TELNETD_INETD_WAIT, /* -w SEC */
++	OPT_HOST       = (1 << 9),                                     /* -h host */
+ };
+ 
+ static struct tsession *
+@@ -524,6 +527,10 @@ make_new_session(
+ 		free(lsa);
+ 	}
+ 
++	if (ipaddr == NULL && G.host != NULL) {
++		ipaddr = xstrdup(G.host);
++	}
++
+ 	if (ENABLE_FEATURE_UTMP) {
+ 		lsa = get_peer_lsa(sock);
+ 		char *hostname = NULL;
+@@ -707,12 +714,14 @@ int telnetd_main(int argc UNUSED_PARAM,
+ 			"f:l:Ki"
+ 			IF_FEATURE_TELNETD_STANDALONE("p:b:F")
+ 			IF_FEATURE_TELNETD_INETD_WAIT("Sw:+") /* -w NUM */
++			"h:"
+ 			"\0"
+ 			/* -w implies -F. -w and -i don't mix */
+ 			IF_FEATURE_TELNETD_INETD_WAIT("wF:i--w:w--i"),
+ 			&G.issuefile, &G.loginpath
+ 			IF_FEATURE_TELNETD_STANDALONE(, &opt_portnbr, &opt_bindaddr)
+ 			IF_FEATURE_TELNETD_INETD_WAIT(, &sec_linger)
++			, &G.host
+ 	);
+ 	if (!IS_INETD /*&& !re_execed*/) {
+ 		/* inform that we start in standalone mode?

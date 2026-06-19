@@ -1,0 +1,139 @@
+From cd251e62044e8efb360b929011da5f266498b5d0 Mon Sep 17 00:00:00 2001
+From: "@joris.vaisvila" <joris.vaisvila@teltonika.lt>
+Date: Tue, 13 Jan 2026 17:41:18 +0200
+Subject: [PATCH 1/1] use libtlt-logger for all logging
+
+---
+ configure.ac     |  1 +
+ src/log.c        | 12 ++++++++++--
+ src/prototypes.h |  2 +-
+ src/tls.c        |  2 +-
+ src/ui_unix.c    |  2 ++
+ 5 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 5fb0cf8..3033fed 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -217,6 +217,7 @@ AC_SEARCH_LIBS([gethostbyname], [nsl])
+ AC_SEARCH_LIBS([yp_get_default_domain], [nsl])
+ AC_SEARCH_LIBS([socket], [socket])
+ AC_SEARCH_LIBS([openpty], [util])
++AC_SEARCH_LIBS([logger_init], [tlt_logger],, [AC_MSG_ERROR([tlt_logger library not found])])
+ # Checks for dynamic loader needed by OpenSSL
+ AC_SEARCH_LIBS([dlopen], [dl])
+ AC_SEARCH_LIBS([shl_load], [dld])
+diff --git a/src/log.c b/src/log.c
+index 1d36224..9bb3969 100644
+--- a/src/log.c
++++ b/src/log.c
+@@ -36,6 +36,7 @@
+  */
+ 
+ #include "prototypes.h"
++#include <tlt_logger.h>
+ 
+ NOEXPORT void log_queue(SERVICE_OPTIONS *, int, char *, char *, char *);
+ NOEXPORT void log_raw(SERVICE_OPTIONS *, int, char *, char *, char *);
+@@ -56,6 +57,7 @@ static LOG_MODE log_mode=LOG_MODE_BUFFER;
+ static int syslog_opened=0;
+ 
+ NOEXPORT void syslog_open(void) {
++    return;
+     if(global_options.option.log_syslog) {
+         static char *servname=NULL;
+         char *servname_old;
+@@ -74,6 +76,7 @@ NOEXPORT void syslog_open(void) {
+ }
+ 
+ NOEXPORT void syslog_close(void) {
++    return;
+     if(syslog_opened) {
+         if(global_options.option.log_syslog)
+             closelog();
+@@ -276,6 +279,8 @@ NOEXPORT void log_raw(SERVICE_OPTIONS *opt,
+         int level, char *stamp, char *id, char *text) {
+     char *line;
+     size_t size;
++    _log(level, "%s: %s", id, text);
++    return;
+ 
+     /* NOTE: opt->log_level may have changed since s_log().
+      * It is important to use the new value and not the old one. */
+@@ -333,7 +338,7 @@ NOEXPORT void log_raw(SERVICE_OPTIONS *opt,
+ #pragma GCC diagnostic ignored "-Wformat"
+ #pragma GCC diagnostic ignored "-Wformat-extra-args"
+ #endif /* __GNUC__ */
+-char *log_id(CLI *c) {
++char *stunnel_log_id(CLI *c) {
+     const char table[62]=
+         {'0', '1', '2', '3', '4', '5', '6', '7',
+          '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+@@ -403,6 +408,9 @@ void fatal_debug(const char *txt, const char *file, int line) {
+     snprintf(msg, sizeof msg, /* with newline */
+         "INTERNAL ERROR: %s at %s, line %d\n", txt, file, line);
+ 
++    _log(LOG_CRIT, "%s", msg);
++    return;
++
+     if(outfile) {
+         file_putline_nonewline(outfile, msg);
+         file_flush(outfile);
+@@ -420,7 +428,7 @@ void fatal_debug(const char *txt, const char *file, int line) {
+ 
+ #if !defined(USE_WIN32) && !defined(__vms)
+     if(global_options.option.log_syslog)
+-        syslog(LOG_CRIT, "%s", msg);
++        _log(LOG_CRIT, "%s", msg);
+ #endif /* USE_WIN32, __vms */
+ 
+ #ifdef USE_WIN32
+diff --git a/src/prototypes.h b/src/prototypes.h
+index a2b10aa..a56e8e1 100644
+--- a/src/prototypes.h
++++ b/src/prototypes.h
+@@ -595,7 +595,7 @@ void s_log(int, const char *, ...)
+     ;
+ #endif
+ void s_vlog(int, const char *, va_list);
+-char *log_id(CLI *);
++char *stunnel_log_id(CLI *);
+ void fatal_debug(const char *, const char *, int) NORETURN;
+ #define fatal(a) fatal_debug((a), __FILE__, __LINE__)
+ void ioerror(const char *);
+diff --git a/src/tls.c b/src/tls.c
+index fcdcdb0..721092d 100644
+--- a/src/tls.c
++++ b/src/tls.c
+@@ -86,7 +86,7 @@ TLS_DATA *tls_alloc(CLI *c, TLS_DATA *inherited, const char *txt) {
+         tls_data->id=str_dup(txt);
+         str_detach_const(tls_data->id); /* it is deallocated after str_stats() */
+     } else if(c) {
+-        tls_data->id=log_id(c);
++        tls_data->id=stunnel_log_id(c);
+         str_detach_const(tls_data->id); /* it is deallocated after str_stats() */
+     }
+ 
+diff --git a/src/ui_unix.c b/src/ui_unix.c
+index 4072565..746d1c5 100644
+--- a/src/ui_unix.c
++++ b/src/ui_unix.c
+@@ -36,6 +36,7 @@
+  */
+ 
+ #include "prototypes.h"
++#include <tlt_logger.h>
+ 
+ NOEXPORT int main_unix(int, char*[]);
+ #if !defined(__vms) && !defined(USE_OS2)
+@@ -61,6 +62,7 @@ int main(int argc, char* argv[]) { /* execution begins here 8-) */
+ }
+ 
+ NOEXPORT int main_unix(int argc, char* argv[]) {
++    logger_init(L_SYSTEM, L_TYPE_SYSLOG | L_SYSLOG_LEVELS, "stunnel");
+     int configure_status;
+ 
+ #if !defined(__vms) && !defined(USE_OS2)
+-- 
+2.43.0
+

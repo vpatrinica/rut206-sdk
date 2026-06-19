@@ -1,0 +1,24 @@
+{
+	"user": "opkg",
+	"access": {
+		"system": {
+			"methods": [
+				"info",
+				"backup"
+			]
+		},
+		"rc": {
+			"methods": [
+				"init"
+			]
+		},
+		"rpc-sys": {
+			"methods": [
+				"reboot"
+			]
+		}
+	},
+	"send": [
+		"vuci.notify"
+	]
+}

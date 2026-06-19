@@ -1,0 +1,11 @@
+--- a/libbb/copy_file.c
++++ b/libbb/copy_file.c
+@@ -229,8 +229,6 @@ end:
+ 			perror_msg("unable to preserve times of `%s'", dest);
+ 		if (chown(dest, source_stat.st_uid, source_stat.st_gid) < 0) {
+ 			source_stat.st_mode &= ~(S_ISUID | S_ISGID);
+-			perror_msg("unable to preserve ownership of `%s'",
+-				   dest);
+ 		}
+ 		if (chmod(dest, source_stat.st_mode) < 0)
+ 			perror_msg("unable to preserve permissions of `%s'",

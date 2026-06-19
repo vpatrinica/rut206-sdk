@@ -1,0 +1,245 @@
+From: Daniel Borkmann <daniel@iogearbox.net>
+To: martin.lau@kernel.org
+Cc: kuba@kernel.org, razor@blackwall.org, sdf@google.com,
+	horms@kernel.org, netdev@vger.kernel.org, bpf@vger.kernel.org,
+	Daniel Borkmann <daniel@iogearbox.net>,
+	David Ahern <dsahern@kernel.org>
+Subject: [PATCH bpf v3 2/8] net: Move {l,t,d}stats allocation to core and convert veth & vrf
+Date: Tue, 14 Nov 2023 01:42:14 +0100	[thread overview]
+Message-ID: <20231114004220.6495-3-daniel@iogearbox.net> (raw)
+In-Reply-To: <20231114004220.6495-1-daniel@iogearbox.net>
+
+Move {l,t,d}stats allocation to the core and let netdevs pick the stats
+type they need. That way the driver doesn't have to bother with error
+handling (allocation failure checking, making sure free happens in the
+right spot, etc) - all happening in the core.
+
+Co-developed-by: Jakub Kicinski <kuba@kernel.org>
+Signed-off-by: Jakub Kicinski <kuba@kernel.org>
+Signed-off-by: Daniel Borkmann <daniel@iogearbox.net>
+Reviewed-by: Nikolay Aleksandrov <razor@blackwall.org>
+Cc: David Ahern <dsahern@kernel.org>
+---
+ drivers/net/veth.c        | 16 ++-----------
+ drivers/net/vrf.c         | 14 +++--------
+ include/linux/netdevice.h | 20 ++++++++++++----
+ net/core/dev.c            | 49 ++++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 69 insertions(+), 30 deletions(-)
+
+--- a/drivers/net/veth.c
++++ b/drivers/net/veth.c
+@@ -1325,25 +1325,12 @@ static void veth_free_queues(struct net_
+ 
+ static int veth_dev_init(struct net_device *dev)
+ {
+-	int err;
+-
+-	dev->lstats = netdev_alloc_pcpu_stats(struct pcpu_lstats);
+-	if (!dev->lstats)
+-		return -ENOMEM;
+-
+-	err = veth_alloc_queues(dev);
+-	if (err) {
+-		free_percpu(dev->lstats);
+-		return err;
+-	}
+-
+-	return 0;
++	return veth_alloc_queues(dev);
+ }
+ 
+ static void veth_dev_free(struct net_device *dev)
+ {
+ 	veth_free_queues(dev);
+-	free_percpu(dev->lstats);
+ }
+ 
+ #ifdef CONFIG_NET_POLL_CONTROLLER
+@@ -1569,6 +1556,7 @@ static void veth_setup(struct net_device
+ 			       NETIF_F_HW_VLAN_STAG_RX);
+ 	dev->needs_free_netdev = true;
+ 	dev->priv_destructor = veth_dev_free;
++	dev->pcpu_stat_type = NETDEV_PCPU_STAT_LSTATS;
+ 	dev->max_mtu = ETH_MAX_MTU;
+ 
+ 	dev->hw_features = VETH_FEATURES;
+--- a/drivers/net/vrf.c
++++ b/drivers/net/vrf.c
+@@ -1165,22 +1165,15 @@ static void vrf_dev_uninit(struct net_de
+ 
+ 	vrf_rtable_release(dev, vrf);
+ 	vrf_rt6_release(dev, vrf);
+-
+-	free_percpu(dev->dstats);
+-	dev->dstats = NULL;
+ }
+ 
+ static int vrf_dev_init(struct net_device *dev)
+ {
+ 	struct net_vrf *vrf = netdev_priv(dev);
+ 
+-	dev->dstats = netdev_alloc_pcpu_stats(struct pcpu_dstats);
+-	if (!dev->dstats)
+-		goto out_nomem;
+-
+ 	/* create the default dst which points back to us */
+ 	if (vrf_rtable_create(dev) != 0)
+-		goto out_stats;
++		goto out_nomem;
+ 
+ 	if (vrf_rt6_create(dev) != 0)
+ 		goto out_rth;
+@@ -1194,9 +1187,6 @@ static int vrf_dev_init(struct net_devic
+ 
+ out_rth:
+ 	vrf_rtable_release(dev, vrf);
+-out_stats:
+-	free_percpu(dev->dstats);
+-	dev->dstats = NULL;
+ out_nomem:
+ 	return -ENOMEM;
+ }
+@@ -1697,6 +1687,8 @@ static void vrf_setup(struct net_device
+ 	dev->min_mtu = IPV6_MIN_MTU;
+ 	dev->max_mtu = IP6_MAX_MTU;
+ 	dev->mtu = dev->max_mtu;
++
++	dev->pcpu_stat_type = NETDEV_PCPU_STAT_DSTATS;
+ }
+ 
+ static int vrf_validate(struct nlattr *tb[], struct nlattr *data[],
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -1722,6 +1722,13 @@ enum netdev_ml_priv_type {
+ 	ML_PRIV_CAN,
+ };
+ 
++enum netdev_stat_type {
++	NETDEV_PCPU_STAT_NONE,
++	NETDEV_PCPU_STAT_LSTATS, /* struct pcpu_lstats */
++	NETDEV_PCPU_STAT_TSTATS, /* struct pcpu_sw_netstats */
++	NETDEV_PCPU_STAT_DSTATS, /* struct pcpu_dstats */
++};
++
+ /**
+  *	struct net_device - The DEVICE structure.
+  *
+@@ -1919,10 +1926,14 @@ enum netdev_ml_priv_type {
+  *
+  * 	@ml_priv:	Mid-layer private
+  *	@ml_priv_type:  Mid-layer private type
+- * 	@lstats:	Loopback statistics
+- * 	@tstats:	Tunnel statistics
+- * 	@dstats:	Dummy statistics
+- * 	@vstats:	Virtual ethernet statistics
++ *
++ *	@pcpu_stat_type:	Type of device statistics which the core should
++ *				allocate/free: none, lstats, tstats, dstats. none
++ *				means the driver is handling statistics allocation/
++ *				freeing internally.
++ *	@lstats:		Loopback statistics: packets, bytes
++ *	@tstats:		Tunnel statistics: RX/TX packets, RX/TX bytes
++ *	@dstats:		Dummy statistics: RX/TX/drop packets, RX/TX bytes
+  *
+  *	@garp_port:	GARP
+  *	@mrp_port:	MRP
+@@ -2244,6 +2255,7 @@ struct net_device {
+ 	void				*ml_priv;
+ 	enum netdev_ml_priv_type	ml_priv_type;
+ 
++	enum netdev_stat_type		pcpu_stat_type:8;
+ 	union {
+ 		struct pcpu_lstats __percpu		*lstats;
+ 		struct pcpu_sw_netstats __percpu	*tstats;
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -10142,6 +10142,46 @@ sync_lower:
+ 	return err < 0 ? 0 : 1;
+ }
+ 
++static int netdev_do_alloc_pcpu_stats(struct net_device *dev)
++{
++	void __percpu *v;
++
++	switch (dev->pcpu_stat_type) {
++	case NETDEV_PCPU_STAT_NONE:
++		return 0;
++	case NETDEV_PCPU_STAT_LSTATS:
++		v = dev->lstats = netdev_alloc_pcpu_stats(struct pcpu_lstats);
++		break;
++	case NETDEV_PCPU_STAT_TSTATS:
++		v = dev->tstats = netdev_alloc_pcpu_stats(struct pcpu_sw_netstats);
++		break;
++	case NETDEV_PCPU_STAT_DSTATS:
++		v = dev->dstats = netdev_alloc_pcpu_stats(struct pcpu_dstats);
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	return v ? 0 : -ENOMEM;
++}
++
++static void netdev_do_free_pcpu_stats(struct net_device *dev)
++{
++	switch (dev->pcpu_stat_type) {
++	case NETDEV_PCPU_STAT_NONE:
++		return;
++	case NETDEV_PCPU_STAT_LSTATS:
++		free_percpu(dev->lstats);
++		break;
++	case NETDEV_PCPU_STAT_TSTATS:
++		free_percpu(dev->tstats);
++		break;
++	case NETDEV_PCPU_STAT_DSTATS:
++		free_percpu(dev->dstats);
++		break;
++	}
++}
++
+ /**
+  *	netdev_update_features - recalculate device features
+  *	@dev: the device to check
+@@ -10371,11 +10411,15 @@ int register_netdevice(struct net_device
+ 		goto err_uninit;
+ 	}
+ 
++	ret = netdev_do_alloc_pcpu_stats(dev);
++	if (ret)
++		goto err_uninit;
++
+ 	ret = -EBUSY;
+ 	if (!dev->ifindex)
+ 		dev->ifindex = dev_new_index(net);
+ 	else if (__dev_get_by_index(net, dev->ifindex))
+-		goto err_uninit;
++		goto err_free_pcpu;
+ 
+ 	/* Transfer changeable features to wanted_features and enable
+ 	 * software offloads (GSO and GRO).
+@@ -10422,14 +10466,14 @@ int register_netdevice(struct net_device
+ 	ret = call_netdevice_notifiers(NETDEV_POST_INIT, dev);
+ 	ret = notifier_to_errno(ret);
+ 	if (ret)
+-		goto err_uninit;
++		goto err_free_pcpu;
+ 
+ 	ret = netdev_register_kobject(dev);
+ 	write_lock(&dev_base_lock);
+ 	dev->reg_state = ret ? NETREG_UNREGISTERED : NETREG_REGISTERED;
+ 	write_unlock(&dev_base_lock);
+ 	if (ret)
+-		goto err_uninit;
++		goto err_free_pcpu;
+ 
+ 	__netdev_update_features(dev);
+ 
+@@ -10474,6 +10518,8 @@ int register_netdevice(struct net_device
+ out:
+ 	return ret;
+ 
++err_free_pcpu:
++	netdev_do_free_pcpu_stats(dev);
+ err_uninit:
+ 	if (dev->netdev_ops->ndo_uninit)
+ 		dev->netdev_ops->ndo_uninit(dev);

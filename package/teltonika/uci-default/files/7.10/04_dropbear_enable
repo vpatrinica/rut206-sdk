@@ -1,0 +1,10 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+if [ -z "$(uci_get "dropbear" "@dropbear[0]" "enable")" ]; then
+	uci_set "dropbear" "@dropbear[0]" "enable" "1"
+	uci_commit dropbear
+fi
+
+exit 0

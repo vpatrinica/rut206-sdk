@@ -1,0 +1,4 @@
+/etc/ulogd.conf     ulogd:ulogd 660
+/etc/config/ulogd   ulogd:ulogd 660
+/usr/local/home/ulogd ulogd:ulogd 755 cd
+/usr/local/home/ulogd/.ssh ulogd:ulogd 750 cd

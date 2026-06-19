@@ -1,0 +1,4 @@
+#!/bin/sh
+	CONFIG_PATH="${UCI_CONFIG_DIR:-"/etc/config"}"
+	[[ -s "$CONFIG_PATH/operctl" ]] || cp -f "/rom/etc/config/operctl" "$CONFIG_PATH/"
+	return 0

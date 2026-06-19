@@ -1,0 +1,59 @@
+--- a/drivers/of/base.c
++++ b/drivers/of/base.c
+@@ -499,6 +499,46 @@ bool __of_mnf_branch_is_compatible(const
+ 	return false;
+ }
+ 
++bool __of_mnf_branch_is_incompatible(const struct device_node *device) {
++	size_t l;
++	int i;
++	const char *p, *end, *branch;
++	const struct property *prop;
++
++	prop = __of_find_property(device, "tlt-mnf,incompatible_branch" , NULL);
++	if (!prop)
++		return true;
++
++	if (!prop->value) {
++		pr_err("%s:%d %s->%s has no value\n", __func__, __LINE__, device->full_name, prop->name);
++		return false;
++	}
++
++	if (!(branch = mnf_info_get_branch())) {
++		pr_debug("%s:%d Failed to get hw branch\n", __func__, __LINE__);
++		return true;
++	}
++
++	p = prop->value;
++	end = p + prop->length;
++
++	for (i = 0; p < end; i++, p += l) {
++		l = strnlen(p, end - p) + 1;
++		if (p + l > end) {
++			pr_err("%s:%d Parsing failure for %s->%s\n", __func__, __LINE__, device->full_name, prop->name);
++			return false;
++		}
++
++		if (strstr(branch, p)) {
++			pr_debug("%s:%d Incompatible %s->%s=%s \n", __func__, __LINE__, device->full_name, prop->name, branch);
++			return false; /* Found it */
++		}
++	}
++	pr_debug("%s:%d Compatible %s->%s=%s \n", __func__, __LINE__, device->full_name, prop->name, branch);
++
++	return true;
++}
++
+ bool __of_mnf_hwver_is_compatible(const struct device_node *device) {
+ 	int cur_hwver = 0, i, len;
+ 	const __be32 *val;
+@@ -560,6 +600,9 @@ static bool __of_device_is_mnf_compatibl
+ 	if (!__of_mnf_hwver_is_compatible(device))
+ 		goto err;
+ 
++	if (!__of_mnf_branch_is_incompatible(device))
++		goto err;
++
+ 	return true;
+ err:
+ 	pr_debug("%s:%d Incompatible device=%s\n", __func__, __LINE__, device->full_name);

@@ -1,0 +1,1 @@
+{"user":"uhttpd","access":{"session":{"methods":["2fa_login"]},"totp":{"methods":["make_secret","remove_secret","check","status"]}}}

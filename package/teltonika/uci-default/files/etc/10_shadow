@@ -1,0 +1,14 @@
+#!/bin/sh
+
+BASE_DIR="${UCI_CONFIG_DIR%/etc/config}"
+
+ppwd=$(sed -ne '/^root:/s/^root:\([^:]*\):.*$/\1/p' $BASE_DIR/etc/passwd)
+spwd=$(sed -ne '/^root:/s/^root:\([^:]*\):.*$/\1/p' $BASE_DIR/etc/shadow)
+
+if [ -n "${ppwd#[\!x]}" ] && [ -z "${spwd#[\!x]}" ]; then
+	logger -t migrate-shadow "Moving root password hash into shadow database"
+	sed -i -e "s:^root\:[^\:]*\::root\:x\::" $BASE_DIR/etc/passwd
+	sed -i -e "s:^root\:[^\:]*\::root\:${ppwd}\::" $BASE_DIR/etc/shadow
+fi
+
+exit 0

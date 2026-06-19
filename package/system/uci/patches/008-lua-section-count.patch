@@ -1,0 +1,39 @@
+--- a/lua/uci.c
++++ b/lua/uci.c
+@@ -445,6 +445,28 @@ uci_lua_get_all(lua_State *L)
+ }
+ 
+ static int
++uci_lua_get_num_sections(lua_State *L)
++{
++	struct uci_context *ctx;
++	struct uci_package *p;
++	const char *package;
++	int offset = 0;
++	int count = 0;
++
++	ctx = find_context(L, &offset);
++	package = luaL_checkstring(L, 1 + offset);
++	p = find_package(L, ctx, package, true);
++	if (!p) {
++		lua_pushinteger(L, count);
++		return uci_push_status(L, ctx, true);
++	}
++
++	count = p->n_section;
++	lua_pushinteger(L, count);
++	return uci_push_status(L, ctx, true);
++}
++
++static int
+ uci_lua_add(lua_State *L)
+ {
+ 	struct uci_context *ctx;
+@@ -1056,6 +1078,7 @@ static const luaL_Reg uci[] = {
+ 	{ "unload", uci_lua_unload },
+ 	{ "get", uci_lua_get },
+ 	{ "get_all", uci_lua_get_all },
++	{ "get_num_sections", uci_lua_get_num_sections },
+ 	{ "add", uci_lua_add },
+ 	{ "set", uci_lua_set },
+ 	{ "rename", uci_lua_rename },

@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+rm_encounter() {
+	local value="$1"
+	local sid="$2"
+	case "$value" in
+		encounter)
+			uci_remove_list "pptpd" "$sid" pptp_options "$value"
+			;;
+	esac
+}
+
+fix_encounter() {
+	local sid="$1"
+	config_get pptp_options "$sid" "pptp_options" ""
+	[ -n "$pptp_options" ] && config_list_foreach "$sid" pptp_options rm_encounter "$sid"
+}
+
+config_load "pptpd"
+config_foreach "fix_encounter" "service"
+uci_commit "pptpd"
+
+exit 0

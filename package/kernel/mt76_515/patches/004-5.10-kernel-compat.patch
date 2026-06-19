@@ -1,0 +1,21 @@
+Index: mt76-2023-05-13-969b7b5e/eeprom.c
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/eeprom.c
++++ mt76-2023-05-13-969b7b5e/eeprom.c
+@@ -108,7 +108,16 @@ mt76_eeprom_override(struct mt76_phy *ph
+ 	struct mt76_dev *dev = phy->dev;
+ 	struct device_node *np = dev->dev->of_node;
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
++	const u8 *mac = NULL;
++
++	if (np)
++		mac = of_get_mac_address(np);
++	if (!IS_ERR_OR_NULL(mac))
++		ether_addr_copy(phy->macaddr, mac);
++#else
+ 	of_get_mac_address(np, phy->macaddr);
++#endif
+ 
+ 	if (!is_valid_ether_addr(phy->macaddr)) {
+ 		eth_random_addr(phy->macaddr);

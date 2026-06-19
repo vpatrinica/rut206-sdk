@@ -1,0 +1,1 @@
+{"services/can/gateway":{"description":"CAN gateway configuration","read":{"api":{"/can/gateway/*":["*"]}},"write":{"api":["/can/gateway/*"]}}}

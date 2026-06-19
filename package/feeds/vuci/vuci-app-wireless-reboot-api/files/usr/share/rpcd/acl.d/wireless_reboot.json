@@ -1,0 +1,1 @@
+{"system/maintenance/auto_reboot/wireless_reboot":{"description":"wireless reboot configuration","read":{"api":{"/auto_reboot/wireless/*":["*"]}},"write":{"api":["/auto_reboot/wireless/*"]}}}

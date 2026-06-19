@@ -1,0 +1,40 @@
+diff --git a/lua/CMakeLists.txt b/lua/CMakeLists.txt
+index 96b122a..96a5b04 100644
+--- a/lua/CMakeLists.txt
++++ b/lua/CMakeLists.txt
+@@ -6,7 +6,7 @@ SET(CMAKE_INSTALL_PREFIX /)
+ 
+ IF(NOT LUA_CFLAGS)
+ 	INCLUDE(FindPkgConfig)
+-	pkg_search_module(LUA lua5.1 lua-5.1)
++	pkg_search_module(LUA luajit)
+ ENDIF()
+ 
+ ADD_DEFINITIONS(-Os -Wall -Werror --std=gnu99 -g3 -I.. ${LUA_CFLAGS})
+diff --git a/lua/uci.c b/lua/uci.c
+index 4c8c513..b9e083d 100644
+--- a/lua/uci.c
++++ b/lua/uci.c
+@@ -38,22 +38,6 @@
+ 
+ int luaopen_uci(lua_State *L);
+ 
+-/*
+- * ** Adapted from Lua 5.2.0
+- * */
+-static void luaL_setfuncs (lua_State *L, const luaL_Reg *l, int nup) {
+-	luaL_checkstack(L, nup+1, "too many upvalues");
+-	for (; l->name != NULL; l++) {  /* fill the table with given functions */
+-		int i;
+-		lua_pushstring(L, l->name);
+-		for (i = 0; i < nup; i++)  /* copy upvalues to the top */
+-			lua_pushvalue(L, -(nup+1));
+-		lua_pushcclosure(L, l->func, nup);  /* closure with those upvalues */
+-		lua_settable(L, -(nup + 3));
+-	}
+-	lua_pop(L, nup);  /* remove upvalues */
+-}
+-
+ #define lua_rawlen(L, i) lua_objlen(L, i)
+ 
+ #endif

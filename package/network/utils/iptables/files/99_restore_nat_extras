@@ -1,0 +1,9 @@
+#!/bin/sh
+PACKAGE_FILE="/etc/package_restore.txt"
+
+[ -f "/usr/local/lib/opkg/info/iptables-mod-nat-extra.control" ] && exit 0
+grep -qsF 'iptables-mod-nat-extra - IPtables NAT extra' "$PACKAGE_FILE" && exit 0
+
+echo "iptables-mod-nat-extra - IPtables NAT extra" >> /etc/package_restore.txt
+
+exit 0

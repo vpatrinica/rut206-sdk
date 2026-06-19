@@ -1,0 +1,63 @@
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/Makefile src/Makefile
+--- upstream/Makefile	1970-01-01 00:00:00.000000000 +0000
++++ src/Makefile	2026-01-27 15:21:44.000000000 +0000
+@@ -0,0 +1,17 @@
++IP_CFLAGS = -std=gnu99 -I$(STAGING_DIR)/usr/include/libnl-tiny/
++IP_LDFLAGS = -lluajit-5.1 -lm -lnl-tiny
++IP_OBJ = src/ip.o
++IP_LIB = ip.so
++
++%.o: %.c
++	$(CC) $(CPPFLAGS) $(CFLAGS) $(LUA_CFLAGS) $(IP_CFLAGS) $(FPIC) -c -o $@ $<
++
++$(IP_LIB): $(IP_OBJ)
++	$(CC) $(LDFLAGS) -shared -o $(IP_LIB) $(IP_OBJ) $(IP_LDFLAGS)
++
++all: $(IP_LIB)
++
++clean:
++	rm -f *.o *.so
++
++.PHONY: all clean
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/src/Makefile src/src/Makefile
+--- upstream/src/Makefile	2021-09-01 05:48:42.000000000 +0000
++++ src/src/Makefile	1970-01-01 00:00:00.000000000 +0000
+@@ -1,17 +0,0 @@
+-IP_CFLAGS = -std=gnu99 -I$(STAGING_DIR)/usr/include/libnl-tiny/
+-IP_LDFLAGS = -llua -lm -lnl-tiny
+-IP_OBJ = ip.o
+-IP_LIB = ip.so
+-
+-%.o: %.c
+-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LUA_CFLAGS) $(IP_CFLAGS) $(FPIC) -c -o $@ $<
+-
+-compile: $(IP_OBJ)
+-	$(CC) $(LDFLAGS) -shared -o $(IP_LIB) $(IP_OBJ) $(IP_LDFLAGS)
+-
+-install: compile
+-	mkdir -p $(DESTDIR)/usr/lib/lua/luci
+-	cp $(IP_LIB) $(DESTDIR)/usr/lib/lua/luci/$(IP_LIB)
+-
+-clean:
+-	rm -f *.o *.so
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/src/ip.c src/src/ip.c
+--- upstream/src/ip.c	2021-09-01 05:48:42.000000000 +0000
++++ src/src/ip.c	2026-01-27 15:21:44.000000000 +0000
+@@ -1625,7 +1625,7 @@
+ }
+ 
+ 
+-static const luaL_reg ip_methods[] = {
++static const luaL_Reg ip_methods[] = {
+ 	{ "new",			cidr_new          },
+ 	{ "IPv4",			cidr_ipv4         },
+ 	{ "IPv6",			cidr_ipv6         },
+@@ -1645,7 +1645,7 @@
+ 	{ }
+ };
+ 
+-static const luaL_reg ip_cidr_methods[] = {
++static const luaL_Reg ip_cidr_methods[] = {
+ 	{ "is4",			cidr_is4          },
+ 	{ "is4rfc1918",		cidr_is4rfc1918   },
+ 	{ "is4linklocal",	cidr_is4linklocal },

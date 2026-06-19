@@ -1,0 +1,19 @@
+#!/bin/sh
+
+[ -e "$UCI_CONFIG_DIR/dot1x" ] || exit 0
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+uci_show "dot1x" "@client[0]" > /dev/null || exit 0
+
+sed -i 's/config client/config port/g' "$UCI_CONFIG_DIR/dot1x"
+
+add_role() {
+	uci_set "dot1x" "$1" "role" "client"
+}
+config_load "dot1x"
+config_foreach "add_role" "port"
+uci_commit dot1x
+
+exit 0

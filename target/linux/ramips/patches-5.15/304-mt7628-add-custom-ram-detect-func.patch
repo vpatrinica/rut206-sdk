@@ -1,0 +1,54 @@
+--- a/arch/mips/ralink/mt7620.c
++++ b/arch/mips/ralink/mt7620.c
+@@ -10,6 +10,7 @@
+ 
+ #include <linux/kernel.h>
+ #include <linux/init.h>
++#include <linux/memblock.h>
+ #include <linux/bug.h>
+ 
+ #include <asm/mipsregs.h>
+@@ -49,6 +50,8 @@
+ /* does the board have sdram or ddram */
+ static int dram_type;
+ 
++static u32 detect_magic __initdata = 0xaa5555aa;
++
+ static __init u32
+ mt7620_calc_rate(u32 ref_rate, u32 mul, u32 div)
+ {
+@@ -324,6 +327,21 @@ mt7628_dram_init(struct ralink_soc_info
+ 	}
+ }
+ 
++static void __init mt7628_memory_detect(void)
++{
++	void *dm = (void *)KSEG1ADDR(&detect_magic);
++	phys_addr_t size;
++	phys_addr_t sz_min = MT7620_DDR2_SIZE_MIN * SZ_1M;
++	phys_addr_t sz_max = MT7620_DDR2_SIZE_MAX * SZ_1M;
++
++	for (size = sz_min; size < sz_max; size <<= 1) {
++		if (!memcmp(dm, dm + size, sizeof(detect_magic)))
++			break;
++	}
++
++	memblock_add(MT7620_DRAM_BASE, size);
++}
++
+ void __init prom_soc_init(struct ralink_soc_info *soc_info)
+ {
+ 	void __iomem *sysc = (void __iomem *) KSEG1ADDR(MT7620_SYSC_BASE);
+@@ -383,9 +401,10 @@ void __init prom_soc_init(struct ralink_
+ 	}
+ 
+ 	soc_info->mem_base = MT7620_DRAM_BASE;
+-	if (is_mt76x8())
++	if (is_mt76x8()) {
+ 		mt7628_dram_init(soc_info);
+-	else
++		soc_info->mem_detect = mt7628_memory_detect;
++	} else
+ 		mt7620_dram_init(soc_info);
+ 
+ 	pmu0 = __raw_readl(sysc + PMU0_CFG);

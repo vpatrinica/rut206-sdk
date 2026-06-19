@@ -1,0 +1,29 @@
+#!/bin/sh
+
+SITEMAN_ENABLED=$(uci -q get siteman.general.enabled)
+[ "$SITEMAN_ENABLED" != "1" ] && exit 0
+
+[ "$ACTION" != "ifup" ] && exit 0
+
+AREA_TYPE=$(uci -q get network."$INTERFACE".area_type)
+[ "$AREA_TYPE" != "lan" ] && exit 0
+
+uci -q get dhcp."$INTERFACE" >/dev/null || exit 0
+
+DHCP_OPT=$(uci -q get siteman.general.dhcp_option)
+DHCP_OPT=${DHCP_OPT:-43}
+
+IP=$(ubus call network.interface."$INTERFACE" status | jsonfilter -e '@["ipv4-address"][0].address')
+
+for opt in $(uci -q get dhcp."$INTERFACE".dhcp_option); do
+	case "$opt" in
+		"${DHCP_OPT}",*)
+			uci del_list dhcp."$INTERFACE".dhcp_option="$opt"
+			;;
+	esac
+done
+
+uci add_list dhcp."$INTERFACE".dhcp_option="${DHCP_OPT},$IP"
+uci commit dhcp
+
+/etc/init.d/dnsmasq reload

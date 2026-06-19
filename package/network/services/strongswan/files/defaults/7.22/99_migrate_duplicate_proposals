@@ -1,0 +1,73 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+UCI_CONFIG_DIR="${UCI_CONFIG_DIR:-/etc/config}"
+[ -f "$UCI_CONFIG_DIR/ipsec" ] || exit 0
+
+collect_crypto_proposal(){
+	local value="$1"
+	append PROPOSALS "$value"
+}
+
+deduplicate_crypto_proposals(){
+	local section="$1"
+
+	PROPOSALS=""
+	config_list_foreach "$section" "crypto_proposal" collect_crypto_proposal
+	[ -n "$PROPOSALS" ] || return
+
+	local RECORDS="" KEEP="" DUPLICATES=""
+	local proposal enc hash dh normalized safe_key entry canonical
+
+	for proposal in $PROPOSALS; do
+		config_get enc "$proposal" "encryption_algorithm"
+		config_get hash "$proposal" "hash_algorithm"
+		config_get dh "$proposal" "dh_group"
+
+		if [ -n "$enc" ] && [ -n "$hash" ] && [ -n "$dh" ]; then
+			normalized="$(printf '%s,%s,%s' "$enc" "$hash" "$dh" | tr 'A-Z' 'a-z' | tr -d ' ')"
+		else
+			normalized="missing_${proposal}"
+		fi
+
+		safe_key="$(echo "$normalized" | tr -c 'a-z0-9' '_' )"
+		[ -n "$safe_key" ] || safe_key="key_${proposal}"
+
+		canonical=""
+		for entry in $RECORDS; do
+			case "$entry" in
+				"$safe_key="*)
+					canonical="${entry#*=}"
+					break
+					;;
+			esac
+		done
+
+		if [ -n "$canonical" ]; then
+			[ "$proposal" != "$canonical" ] && DUPLICATES="$DUPLICATES $proposal"
+			continue
+		fi
+
+		RECORDS="$RECORDS $safe_key=$proposal"
+		KEEP="$KEEP $proposal"
+	done
+
+	[ -n "$DUPLICATES" ] || return
+
+	uci_remove "ipsec" "$section" "crypto_proposal"
+	for proposal in $KEEP; do
+		uci_add_list "ipsec" "$section" "crypto_proposal" "$proposal"
+	done
+
+	for proposal in $DUPLICATES; do
+		uci_remove "ipsec" "$proposal"
+	done
+}
+
+config_load ipsec
+config_foreach deduplicate_crypto_proposals "remote"
+config_foreach deduplicate_crypto_proposals "connection"
+uci_commit "ipsec"
+
+exit 0

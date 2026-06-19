@@ -1,0 +1,48 @@
+--- a/drivers/usb/serial/pl2303.c
++++ b/drivers/usb/serial/pl2303.c
+@@ -1090,6 +1090,37 @@ static void pl2303_break_ctl(struct tty_
+ 	pl2303_set_break(port, state);
+ }
+ 
++static bool pl2303_cts_asserted(struct usb_serial_port *port)
++{
++	struct pl2303_private *priv = usb_get_serial_port_data(port);
++	unsigned long flags;
++	bool asserted;
++
++	spin_lock_irqsave(&priv->lock, flags);
++	asserted = !!(priv->line_status & UART_CTS);
++	spin_unlock_irqrestore(&priv->lock, flags);
++
++	return asserted;
++}
++
++static int pl2303_write(struct tty_struct *tty, struct usb_serial_port *port,
++			const unsigned char *buf, int count)
++{
++	long timeout;
++
++	if (C_CRTSCTS(tty) && !pl2303_cts_asserted(port)) {
++		timeout = wait_event_interruptible_timeout(
++			port->port.delta_msr_wait, pl2303_cts_asserted(port),
++			msecs_to_jiffies(1000));
++		if (timeout < 0)
++			return timeout;
++		if (timeout == 0)
++			return -ETIMEDOUT;
++	}
++
++	return usb_serial_generic_write(tty, port, buf, count);
++}
++
+ static void pl2303_update_line_status(struct usb_serial_port *port,
+ 				      unsigned char *data,
+ 				      unsigned int actual_length)
+@@ -1243,6 +1274,7 @@ static struct usb_serial_driver pl2303_d
+ 	.bulk_out_size =	256,
+ 	.open =			pl2303_open,
+ 	.close =		pl2303_close,
++	.write =		pl2303_write,
+ 	.dtr_rts =		pl2303_dtr_rts,
+ 	.carrier_raised =	pl2303_carrier_raised,
+ 	.break_ctl =		pl2303_break_ctl,

@@ -1,0 +1,117 @@
+Add an optional timeout arg to 'rootwait' as the maximum time in
+seconds to wait for the root device to show up before attempting
+forced mount of the root filesystem.
+
+Use case:
+In case of device mapper usage for the rootfs (e.g. root=/dev/dm-0),
+if the mapper is not able to create the virtual block for any reason
+(wrong arguments, bad dm-verity signature, etc), the `rootwait` param
+causes the kernel to wait forever. It may however be desirable to only
+wait for a given time and then panic (force mount) to cause device reset.
+This gives the bootloader a chance to detect the problem and to take some
+measures, such as marking the booted partition as bad (for A/B case) or
+entering a recovery mode.
+
+In success case, mounting happens as soon as the root device is ready,
+unlike the existing 'rootdelay' parameter which performs an unconditional
+pause.
+
+Signed-off-by: Loic Poulain <loic.poulain@linaro.org>
+---
+ v2: rebase + reword: add use case example
+ v3: Use kstrtoint instead of deprecated simple_strtoul
+ v4: Handle mult overflow when converting sec to ms
+     Initialize end ktime after ROOT_DEV check
+
+ .../admin-guide/kernel-parameters.txt         |  4 ++
+ init/do_mounts.c                              | 38 ++++++++++++++++++-
+ 2 files changed, 40 insertions(+), 2 deletions(-)
+ 
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -5157,6 +5157,10 @@
+ 			Useful for devices that are detected asynchronously
+ 			(e.g. USB and MMC devices).
+ 
++	rootwait=	[KNL] Maximum time (in seconds) to wait for root device
++			to show up before attempting to mount the root
++			filesystem.
++
+ 	rproc_mem=nn[KMG][@address]
+ 			[KNL,ARM,CMA] Remoteproc physical memory block.
+ 			Memory area to be used by remote processor image,
+--- a/init/do_mounts.c
++++ b/init/do_mounts.c
+@@ -19,6 +19,7 @@
+ #include <linux/slab.h>
+ #include <linux/ramfs.h>
+ #include <linux/shmem_fs.h>
++#include <linux/ktime.h>
+ 
+ #include <linux/nfs_fs.h>
+ #include <linux/nfs_fs_sb.h>
+@@ -307,12 +308,37 @@ static int __init rootwait_setup(char *s
+ {
+ 	if (*str)
+ 		return 0;
+-	root_wait = 1;
++	root_wait = -1;
+ 	return 1;
+ }
+ 
+ __setup("rootwait", rootwait_setup);
+ 
++static int __init rootwait_timeout_setup(char *str)
++{
++	int sec;
++
++	if (kstrtoint(str, 0, &sec) || sec < 0) {
++		pr_warn("ignoring invalid rootwait value\n");
++		goto ignore;
++	}
++
++	if (check_mul_overflow(sec, MSEC_PER_SEC, &root_wait)) {
++		pr_warn("ignoring excessive rootwait value\n");
++		goto ignore;
++	}
++
++	return 1;
++
++ignore:
++	/* Fallback to indefinite wait */
++	root_wait = -1;
++
++	return 1;
++}
++
++__setup("rootwait=", rootwait_timeout_setup);
++
+ static char * __initdata root_mount_data;
+ static int __init root_data_setup(char *str)
+ {
+@@ -600,6 +626,8 @@ void __init mount_root(void)
+  */
+ void __init prepare_namespace(void)
+ {
++	ktime_t end;
++
+ 	if (root_delay) {
+ 		printk(KERN_INFO "Waiting %d sec before mounting root device...\n",
+ 		       root_delay);
+@@ -636,9 +664,15 @@ void __init prepare_namespace(void)
+ 	if ((ROOT_DEV == 0) && root_wait) {
+ 		printk(KERN_INFO "Waiting for root device %s...\n",
+ 			saved_root_name);
++		end = ktime_add_ms(ktime_get_raw(), root_wait);
++
+ 		while (driver_probe_done() != 0 ||
+-			(ROOT_DEV = name_to_dev_t(saved_root_name)) == 0)
++			(ROOT_DEV = name_to_dev_t(saved_root_name)) == 0) {
+ 			msleep(5);
++
++			if (root_wait > 0 && ktime_after(ktime_get_raw(), end))
++				break;
++		}
+ 		async_synchronize_full();
+ 	}
+ 

@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONFIG="cli"
+UHTTPD_CONFIG="uhttpd"
+
+uci_remove "$CONFIG" "status" "port"
+
+cli_wan_access=$(uci_get "$CONFIG" "status" "_cliWanAccess" "0")
+enabled=$(uci_get "$CONFIG" "status" "enable" "0")
+
+uci_set $UHTTPD_CONFIG "main" "cli_prefix" "/cgi-bin/cli"
+
+if [ "$cli_wan_access" -eq 1 ]; then
+	https_enabled=$(uci_get "$UHTTPD_CONFIG" "main" "enable_https" "0")
+	http_enabled=$(uci_get "$UHTTPD_CONFIG" "main" "enable_http" "0")
+	[ "$https_enabled" -eq 1 ] && uci_set $UHTTPD_CONFIG "main" "_httpsWanAccess" "1"
+	[ "$http_enabled" -eq 1 ] && uci_set $UHTTPD_CONFIG "main" "_httpWanAccess" "1"
+fi
+
+uci_remove "$CONFIG" "status" "_cliWanAccess"
+uci_commit $UHTTPD_CONFIG
+uci_commit "$CONFIG"
+
+exit 0

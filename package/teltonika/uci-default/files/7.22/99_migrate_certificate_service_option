@@ -1,0 +1,36 @@
+#!/bin/sh
+. /lib/functions.sh
+
+update_service_option() {
+	local sid="$1"
+	update_option() {
+		local service instance init old_val new_val old_ifs
+		old_val="$1"
+		old_ifs="$IFS"
+		IFS=":"
+		set -- $1
+		IFS="$old_ifs"
+		service="$1"
+		instance="$2"
+
+		case "$service" in
+		data_sender_output) init="data_sender" ;;
+		io_juggler) init="event_juggler" ;;
+		mqtt_bridge) init="mosquitto" ;;
+		mqtt) service="mosquitto" ;;
+		easycwmp) service="easycwmpd" ;;
+		*) return 0 ;;
+		esac
+		
+		new_val="${init:+$init@}${service}:${instance}"
+		uci_remove_list "certificates" "$sid" services "$old_val"
+		uci_add_list "certificates" "$sid" services "$new_val"
+	}
+	config_list_foreach "$sid" "services" update_option
+}
+
+config_load "certificates"
+config_foreach update_service_option "certificate"
+uci_commit "certificates"
+
+exit 0

@@ -1,0 +1,81 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+is_invalid_ph1_algorithm() {
+	local algo="$1"
+	echo "$algo" | grep -qiE "(ccm|gcm|chacha|ctr)"
+}
+
+is_invalid_ph2_algorithm() {
+	local algo="$1"
+	echo "$algo" | grep -qi "chacha"
+}
+
+fix_proposal() {
+	local proposal="$1"
+	uci_add "ipsec" "proposal" "${proposal}"
+	uci_set "ipsec" "${proposal}" "encryption_algorithm" "aes256"
+	uci_set "ipsec" "${proposal}" "hash_algorithm" "sha512"
+	uci_set "ipsec" "${proposal}" "dh_group" "ecp384"
+}
+
+process_proposals() {
+	local basename="$1"
+	local phase="$2"
+	local section_name="$3"
+	local proposals algo has_valid
+
+	config_get proposals "$section_name" "crypto_proposal"
+	[ -n "$proposals" ] || return
+
+	uci_remove "ipsec" "$section_name" "crypto_proposal"
+
+	has_valid=0
+	for proposal in $proposals; do
+		case "$proposal" in
+			${basename}_${phase}_*)
+				config_get algo "$proposal" "encryption_algorithm"
+				if is_invalid_${phase}_algorithm "$algo"; then
+					uci_remove "ipsec" "$proposal"
+				else
+					uci_add_list "ipsec" "$section_name" "crypto_proposal" "$proposal"
+					has_valid=1
+				fi
+				;;
+			*)
+				uci_add_list "ipsec" "$section_name" "crypto_proposal" "$proposal"
+				has_valid=1
+				;;
+		esac
+	done
+
+	[ "$has_valid" -eq 0 ] && {
+		local new_proposal="${basename}_${phase}_1"
+		fix_proposal "$new_proposal"
+		uci_add_list "ipsec" "$section_name" "crypto_proposal" "$new_proposal"
+	}
+}
+
+process_connection() {
+	local connection="$1"
+	local keyexchange basename remote
+
+	config_get keyexchange "$connection" "keyexchange"
+	[ "$keyexchange" = "ikev1" ] || return
+
+	basename="${connection%_c}"
+	[ "$basename" != "$connection" ] || return
+
+	remote="$basename"
+
+	process_proposals "$basename" "ph1" "$remote"
+
+	process_proposals "$basename" "ph2" "$connection"
+}
+
+config_load ipsec
+config_foreach process_connection "connection"
+uci_commit "ipsec"
+
+exit 0

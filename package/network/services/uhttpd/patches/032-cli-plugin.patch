@@ -1,0 +1,75 @@
+Index: uhttpd-2021-03-21-15346de8/main.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/main.c
++++ uhttpd-2021-03-21-15346de8/main.c
+@@ -273,7 +273,7 @@ int main(int argc, char **argv)
+ 	uh_plugin_setup_sighup();
+ 
+ 	logger_init(L_SYSTEM, L_TYPE_SYSLOG, "uhttpd");
+-	while ((ch = getopt(argc, argv, "A:abC:c:Dd:E:e:fh:H:I:i:K:k:L:l:m:N:n:P:p:qRFr:Ss:T:t:U:u:Xx:y:")) != -1) {
++	while ((ch = getopt(argc, argv, "A:abC:c:Dd:E:e:fh:H:I:i:K:k:L:l:m:N:n:P:p:qRFr:Ss:T:t:U:u:Xx:y:w:")) != -1) {
+ 		switch(ch) {
+ #ifdef HAVE_TLS
+ 		case 'C':
+@@ -462,6 +462,11 @@ int main(int argc, char **argv)
+ 			conf.file = optarg;
+ 			break;
+ 
++		/* ClI prefix*/
++		case 'w':
++			conf.cli_prefix = optarg;
++			break;
++
+ #ifdef HAVE_LUA
+ 		case 'l':
+ 		case 'L':
+@@ -572,6 +577,9 @@ int main(int argc, char **argv)
+ 		return 1;
+ #endif
+ 
++	if (conf.cli_prefix && uh_plugin_init("uhttpd_cli.so"))
++		return 1;
++
+ 	/* fork (if not disabled) */
+ 	if (!nofork) {
+ 		switch (fork()) {
+Index: uhttpd-2021-03-21-15346de8/uhttpd.h
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/uhttpd.h
++++ uhttpd-2021-03-21-15346de8/uhttpd.h
+@@ -69,6 +69,7 @@ struct config {
+ 	const char *cgi_docroot_path;
+ 	const char *cgi_path;
+ 	const char *ubus_prefix;
++	const char *cli_prefix;
+ 	const char *ubus_socket;
+ 	int ubus_object;
+ 	int no_symlinks;
+@@ -258,15 +259,14 @@ struct dispatch {
+ };
+ 
+ struct client {
++	// Add ifdefines at the end of the struct to minimize padding
+ 	struct list_head list;
+ 	int refcount;
+ 	int id;
+ 
+ 	struct ustream *us;
+ 	struct ustream_fd sfd;
+-#ifdef HAVE_TLS
+-	struct ustream_ssl ssl;
+-#endif
++
+ 	struct uloop_timeout timeout;
+ 	int requests;
+ 
+@@ -280,6 +280,9 @@ struct client {
+ 	struct blob_buf hdr;
+ 	struct blob_buf hdr_response;
+ 	struct dispatch dispatch;
++#ifdef HAVE_TLS
++	struct ustream_ssl ssl;
++#endif
+ };
+ 
+ extern char uh_buf[4096];

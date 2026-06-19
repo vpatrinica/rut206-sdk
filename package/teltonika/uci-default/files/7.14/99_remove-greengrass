@@ -1,0 +1,9 @@
+#!/bin/sh
+
+if [ -f $UCI_CONFIG_DIR/greengrass ]; then
+	rm $UCI_CONFIG_DIR/greengrass
+fi
+
+[ -f /etc/package_restore.txt ] && sed -i '/greengrass - AWS Greengrass Core/d' /etc/package_restore.txt
+
+exit 0

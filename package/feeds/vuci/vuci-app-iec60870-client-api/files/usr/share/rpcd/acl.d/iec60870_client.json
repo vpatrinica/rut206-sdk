@@ -1,0 +1,1 @@
+{"services/iec60870_client":{"description":"IEC 60870-5 Client configuration","read":{"api":{"/iec60870/client/*":["*"],"/system/device/status/*":["*"],"/serial/status":["*"],"/universal_gateway/options/*":["*"]}},"write":{"api":["/iec60870/client/*"]}}}

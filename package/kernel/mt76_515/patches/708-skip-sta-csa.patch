@@ -1,0 +1,14 @@
+Index: mt76_515-2023-09-18-2afc7285/mac80211.c
+===================================================================
+--- mt76_515-2023-09-18-2afc7285/mac80211.c
++++ mt76_515-2023-09-18-2afc7285/mac80211.c
+@@ -1625,6 +1625,9 @@ __mt76_csa_check(void *priv, u8 *mac, st
+ {
+ 	struct mt76_dev *dev = priv;
+ 
++	if (vif->type == NL80211_IFTYPE_STATION)
++		return;
++
+ 	if (!vif->bss_conf.csa_active)
+ 		return;
+ 

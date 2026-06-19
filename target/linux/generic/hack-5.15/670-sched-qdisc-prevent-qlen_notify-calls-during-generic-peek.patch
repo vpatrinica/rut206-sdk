@@ -1,0 +1,62 @@
+From: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+Date: Tue Mar 3 16:33:44 2026 +0200
+Subject: sched: qdisc: Prevent 'qlen_notify' calls in qdisc_peek_dequeued
+
+Fix TX lockup when using hfsc scheduler together with fq_codel.
+
+qdisc_peek_dequeued, generic qdisc .peek implementation, calls .dequeue before putting the
+dequeued skb back into gso_skb and incrementing qlen. If underlying .dequeue implementation calls
+qdisc_tree_reduce_backlog with a now-zero qlen, parent qdisc is notified via .qlen_notify.
+This can confuse parent qdisc's, namely hfsc, who expect child qdisc's qlen after .qlen_notify call
+to remain zero until .enqueue is called.
+
+Fix issue by checking whether qdisc_tree_reduce_backlog is called from qdisc_peek_dequeued.
+A better solution would require either fixing all qdisc implementations using the generic peek
+implementation, or fixing all qdiscs using .qlen_notify, removing the qlen assumption.
+
+Signed-off-by: Benas Bagvilas <benas.bagvilas@teltonika.lt>
+---
+ include/net/sch_generic.h |    6 ++++++
+ net/sched/sch_api.c       |    2 +-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+--- a/include/net/sch_generic.h
++++ b/include/net/sch_generic.h
+@@ -111,6 +111,7 @@ struct Qdisc {
+ 	seqcount_t		running;
+ 	struct gnet_stats_queue	qstats;
+ 	unsigned long		state;
++	bool			peeking;
+ 	struct Qdisc            *next_sched;
+ 	struct sk_buff_head	skb_bad_txq;
+ 
+@@ -1116,13 +1117,18 @@ static inline struct sk_buff *qdisc_peek
+ 
+ 	/* we can reuse ->gso_skb because peek isn't called for root qdiscs */
+ 	if (!skb) {
++		sch->peeking = true;
+ 		skb = sch->dequeue(sch);
++		sch->peeking = false;
+ 
+ 		if (skb) {
+ 			__skb_queue_head(&sch->gso_skb, skb);
+ 			/* it's still part of the queue */
+ 			qdisc_qstats_backlog_inc(sch, skb);
+ 			sch->q.qlen++;
++		} else {
++			/* make sure we call qlen_notify if queue is actually empty */
++			qdisc_tree_reduce_backlog(sch, 0, 0);
+ 		}
+ 	}
+ 
+--- a/net/sched/sch_api.c
++++ b/net/sched/sch_api.c
+@@ -778,7 +778,7 @@ void qdisc_tree_reduce_backlog(struct Qd
+ 		if (sch->flags & TCQ_F_NOPARENT)
+ 			break;
+ 		/* Notify parent qdisc only if child qdisc becomes empty. */
+-		notify = !sch->q.qlen;
++		notify = !sch->q.qlen && !sch->peeking;
+ 		/* TODO: perform the search on a per txq basis */
+ 		sch = qdisc_lookup(qdisc_dev(sch), TC_H_MAJ(parentid));
+ 		if (sch == NULL) {

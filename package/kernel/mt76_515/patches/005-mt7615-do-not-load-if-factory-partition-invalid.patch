@@ -1,0 +1,16 @@
+Index: mt76-2023-05-13-969b7b5e/mt7615/eeprom.c
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/mt7615/eeprom.c
++++ mt76-2023-05-13-969b7b5e/mt7615/eeprom.c
+@@ -339,9 +339,8 @@ int mt7615_eeprom_init(struct mt7615_dev
+ 		return ret;
+ 
+ 	ret = mt7615_check_eeprom(&dev->mt76);
+-	if (ret && dev->mt76.otp.data) {
+-		memcpy(dev->mt76.eeprom.data, dev->mt76.otp.data,
+-		       dev->mt76.otp.size);
++	if (ret) {
++		return ret;
+ 	} else {
+ 		dev->flash_eeprom = true;
+ 		mt7615_cal_free_data(dev);

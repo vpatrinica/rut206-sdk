@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+
+START=999
+
+boot() {
+	local dir="/usr/local/share/integrity"
+
+	mkdir -p "$dir"
+	[ -f "$dir/hash.db" ] && return
+
+	ubus -t 180 call integrity create_database '{"path": "'$dir'/hash.db", "dirs": ["/etc/config", "/etc/init.d"]}'
+}

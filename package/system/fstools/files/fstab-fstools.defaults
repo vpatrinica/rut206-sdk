@@ -1,0 +1,4 @@
+#!/bin/sh
+
+[ ! -f "$UCI_CONFIG_DIR/fstab" ] && ( block detect > "$UCI_CONFIG_DIR/fstab" )
+exit 0

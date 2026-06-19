@@ -1,0 +1,505 @@
+#!/usr/bin/lua
+
+require("api/standard_codes")
+
+local util = require("vuci.util")
+local nixio = require("nixio")
+local fs = require("nixio.fs")
+local json = require("luci.jsonc")
+local board = require("vuci.board")
+local pac = require("vuci.package_checker")
+local uci = require("vuci.uci")
+local profiles_lib = require("vuci.profiles")
+local disp_lib = require("api.dispatcher_lib")
+
+-- preload some modules to save time on requests
+require("api/ConfigService")
+require("api/get_logic")
+require("api/delete_logic")
+require("api/put_logic")
+require("api/post_logic")
+require("api/section_logic")
+require("api/option_logic")
+
+require("api/FunctionService")
+require("api.Validations")
+require("vuci.network")
+require("vuci.firewall")
+require("vuci.mwan")
+
+uci.supress_warnings = true
+-- We don't want any commit to happen during the backup process
+uci.commit = function(self, cfg)
+	self:save(cfg)
+	self:load(cfg)
+end
+
+uci.commit_without_event = function(self, cfg)
+	self:save(cfg)
+	self:load(cfg)
+end
+
+-- chdir for correct module path loading
+nixio.chdir("/")
+
+local function usage()
+	print(
+		string.format([[
+Backup
+
+Usage: %s [-d] [-p <password>] <action> [backup_file]
+
+Options:
+  -d             Enable debug mode
+  -p <password>  Specify a password
+  -h             Show this help message
+
+Arguments:
+  <action>       The action to perform (required)
+  [backup_file]  The backup file to use (optional)
+]], arg[0])
+	)
+end
+
+local DEBUG = false
+local DEBUG_EXEC_TIMES = false
+local PASSWORD, ACTION, BACKUP_FILE
+local DEBUG_ENDPOINTS = {
+	count = 0
+}
+
+local i = 1
+while i <= #arg do
+	if #arg[i] == 2 and arg[i]:sub(1, 1) == "-" then
+		local opt = arg[i]:sub(2, 2)
+		if opt == "p" then
+			PASSWORD = arg[i + 1]
+			i = i + 1
+		elseif opt == "e" then
+			DEBUG_ENDPOINTS[arg[i + 1]] = true
+			DEBUG_ENDPOINTS.count = DEBUG_ENDPOINTS.count + 1
+			i = i + 1
+		elseif opt == "d" then
+			DEBUG = true
+		elseif opt == "t" then
+			DEBUG_EXEC_TIMES = true
+		elseif opt == "h" then
+			usage()
+			return
+		end
+	elseif not ACTION then
+		ACTION = arg[i]
+	elseif not BACKUP_FILE then
+		BACKUP_FILE = arg[i]
+	else
+		print("Error: Too many arguments provided.")
+		usage()
+		return
+	end
+	i = i + 1
+end
+
+if not ACTION then
+	usage()
+	return
+end
+
+if DEBUG_ENDPOINTS.count > 0 then
+	print("Debug endpoints:")
+	for endpoint in pairs(DEBUG_ENDPOINTS) do
+		if endpoint ~= "count" then
+			print(" - " .. endpoint)
+		end
+	end
+end
+
+local backup_util = require("vuci.backup_util")
+local Backup = require("vuci.backup_operations")
+
+if DEBUG then
+	backup_util:debug_enable()
+end
+
+local backup = Backup(ACTION, PASSWORD, BACKUP_FILE, DEBUG, DEBUG_ENDPOINTS, DEBUG_EXEC_TIMES)
+
+if ACTION == "generate" then
+	local local_uci = require("uci").cursor()
+
+	local backup_data = {}
+	local profiles = {
+		config = {},
+		current = {
+			profile = "default",
+			data = {}
+		}
+	}
+
+	local ignore_paths = {
+		"/data_to_server/data/{service_group}/{sid}",
+		"/data_to_server/servers/{service_group}/{sid}",
+		"/event_juggler/operations/{service_group}/{sid}",
+		"/event_juggler/conditions/{service_group}/{sid}",
+		"/azure/iot_hub/{service_group}/{sid}/{binding}",
+		"/azure_iot_hub/{service_group}/{sid}",
+		"/certificates/{type}/{service_group}/{sid}",
+		"/modems/{modem_id}/sim_cards/{service_group}/{sid}",
+	}
+
+	local packages = backup:get_api_package_files()
+	local paths, order = backup:parse_endpoints(ignore_paths)
+
+	profiles_lib.update()
+	profiles_lib.uci_defaults()
+
+	backup:pre_generate_hook()
+
+	backup_util:debug_print("Getting endpoints for current profile")
+	for _, route in ipairs(order) do
+		local info = paths[route]
+		if info and not util.contains(backup.PROFILE_ROUTES, route) then
+			backup:generate_run_endpoint(
+				route,
+				info,
+				backup_data,
+				packages,
+				order
+			)
+		end
+	end
+
+	if profiles_lib.installed() then
+		local profile_path = local_uci:get("profiles", "general", "path") or "/etc/profiles/"
+		profiles.current.profile = local_uci:get("profiles", "general", "profile") or "default"
+		local_uci:foreach("profiles", "profile", function(s)
+			if s[".name"] == profiles.current.profile or not s.archive then
+				return true -- continue
+			end
+
+			-- changing uci directory is
+			-- not possible while in an uci foreach
+			profiles.config[s[".name"]] = s.archive
+		end)
+		for sid, archive in pairs(profiles.config) do
+			local tmp_path = "/tmp/profile_" .. sid
+			if backup:extract_tar_archive(profile_path .. archive, tmp_path, nil, true) then
+				uci:set_confdir(tmp_path .. "/etc/config")
+				uci:load_all()
+
+				local profile_data = {}
+				backup_util:debug_print("\nGetting endpoint diffs for " .. sid .. " profile")
+				for _, route in ipairs(order) do
+					local info = paths[route]
+					if info and not util.contains(backup.PROFILE_ROUTES, route) then
+						backup:generate_run_endpoint(
+							route,
+							info,
+							profile_data,
+							packages,
+							order,
+							backup_data
+						)
+					end
+				end
+				profiles.config[sid] = profile_data
+				util.recursive_fs_remove(tmp_path)
+			else
+				profiles.config[sid] = nil
+			end
+		end
+
+		uci:set_confdir("/etc/config")
+		uci:load_all()
+		for _, route in ipairs(backup.PROFILE_ROUTES) do
+			local info = paths[route]
+			if info then
+				backup:generate_run_endpoint(
+					route,
+					info,
+					profiles.current.data,
+					nil,
+					order
+				)
+			end
+		end
+	end
+
+	fs.chown("/tmp/.uci-vuci", "uhttpd", "uhttpd")
+
+	fs.writefile(backup.JSON_PATH, json.stringify({
+		profiles = profiles_lib.installed() and profiles or nil,
+		packages = backup.device_packages,
+		info = backup.metadata.info,
+		data = backup_data
+	}, true))
+	if not fs.access(backup.JSON_PATH) then backup_util:exit(1) end
+
+	if backup:make_tar_archive(backup.file, PASSWORD) then
+		backup_util:debug_print("Backup created in " .. backup.file)
+	end
+	fs.remove(backup.JSON_PATH)
+elseif ACTION == "apply" or ACTION == "verify" then
+	local global_revert = false
+	local errors = {}
+	local apply_after_install = {}
+	local packages_needed = {}
+	local keep_packages = {}
+
+	for pkg in pairs(backup.endpoints.packages or {}) do
+		if backup.available_packages[pkg] then
+			packages_needed[pkg] = backup.available_packages[pkg]
+		end
+	end
+	local endpoints_data = {}
+	backup_util:debug_print("Running DELETE...")
+	for _, backup_endpoint in ipairs(backup.endpoints.data or {}) do
+		local added_to_next_step = false
+		if DEBUG_ENDPOINTS.count == 0 or DEBUG_ENDPOINTS[backup_endpoint.endpoint] then
+			backup:add_execute_time(backup_endpoint.endpoint, "start_delete")
+			local endpoint_exists = disp_lib.does_endpoint_exist(backup_endpoint.endpoint)
+			local pkg_exists, pkg_available, pkg_name = backup:check_packages(backup_endpoint.packages, packages_needed)
+			if not pkg_exists then
+				if pkg_available then
+					table.insert(apply_after_install, backup_endpoint)
+				else
+					table.insert(errors,
+						{
+							endpoint = backup_endpoint.endpoint,
+							errors = {{
+								error = "Package \"" ..(pkg_name or "unknown") .. "\" does not exist"
+							}}
+						}
+					)
+				end
+			end
+			if backup_endpoint.endpoint and backup_endpoint.data and endpoint_exists and pkg_exists then
+				for _, package in pairs(backup_endpoint.packages or {}) do
+					if backup.device_packages[package] then
+						keep_packages[package] = true
+					end
+				end
+				local success, endpoint_skip = backup:reset_endpoint_data(
+					backup_endpoint,
+					backup_endpoint.endpoint
+				)
+				if not success then
+					global_revert = true
+					break
+				end
+				if not endpoint_skip then
+					added_to_next_step = true
+					table.insert(endpoints_data, backup_endpoint)
+				end
+			elseif not endpoint_exists and pkg_exists then
+				table.insert(errors, {
+					endpoint = backup_endpoint.endpoint,
+					errors = {{
+						error = "Endpoint not found"
+					}}
+				})
+			end
+			backup:add_execute_time(backup_endpoint.endpoint, "end_delete")
+		end
+		if not added_to_next_step and backup.total_workload then
+			backup.total_workload = backup.total_workload - 1
+		end
+		backup:increment_workload()
+	end
+	backup_util:debug_print("DELETE finished...\n")
+
+	if not global_revert then
+		for _, backup_endpoint in ipairs(endpoints_data) do
+			backup:add_execute_time(backup_endpoint.endpoint, "start_apply")
+			local success, packages_data = backup:apply_run_endpoint(backup_endpoint, errors)
+			if not success then
+				global_revert = true
+				break
+			end
+			if #packages_data > 0 then
+				for _, pkg_data in ipairs(packages_data) do
+					pkg_data.append_only = true
+					table.insert(apply_after_install, pkg_data)
+				end
+			end
+			backup:increment_workload()
+			backup:add_execute_time(backup_endpoint.endpoint, "end_apply")
+		end
+	end
+
+	backup_util:debug_print("apply after package install")
+	backup_util:debug_print(apply_after_install)
+
+	-- restore packages that need apply after
+	for _, data in ipairs(apply_after_install or {}) do
+		for _, pkg in ipairs(data.packages or {}) do
+			if backup.available_packages[pkg] then
+				packages_needed[pkg] = backup.available_packages[pkg]
+			end
+		end
+	end
+
+	-- need to keep packages that are already installed on device
+	for pkg in pairs(packages_needed) do
+		if backup.device_packages[pkg] then
+			keep_packages[pkg] = true
+		end
+	end
+
+	for pkg in pairs(keep_packages) do
+		backup.installed_packages[pkg] = nil
+		packages_needed[pkg] = nil
+	end
+
+	backup:process_execute_time()
+
+	if ACTION == "verify" then
+		local profile_errors
+		if backup.device_packages[profiles_lib.pkg_name] and DEBUG_ENDPOINTS.count == 0 then
+			profile_errors = backup:apply_profiles(backup.endpoints)
+		end
+		backup:revert_changes()
+		backup_util:success_response(errors, profile_errors, backup, packages_needed)
+	end
+
+	if global_revert then
+		backup:revert_changes()
+		backup_util:success_response(errors, nil, backup)
+	end
+
+	backup:apply_changes()
+
+	local profile_errors
+	if backup.device_packages[profiles_lib.pkg_name] and DEBUG_ENDPOINTS.count == 0 then
+		profile_errors = backup:apply_profiles(backup.endpoints)
+	end
+
+	backup:apply_changes(true)
+
+	backup:save_pkg_restore(packages_needed)
+
+	fs.writefile(backup.RESTORE_PATH, json.stringify({
+		info = backup.metadata.info,
+		data = apply_after_install
+	}))
+
+	if backup.installed_packages then
+		backup_util:debug_print("Removing packages:")
+		backup_util:debug_print(backup.installed_packages)
+		local remove_packages_array = {}
+		for pkg in pairs(backup.installed_packages) do
+			table.insert(remove_packages_array, pkg)
+		end
+		backup_util:package_multi_remove(remove_packages_array)
+	end
+
+	backup_util:success_response(errors, profile_errors, backup, packages_needed)
+elseif ACTION == "pkg_install" then
+	local errors = {}
+	local global_revert = false
+	local new_data = {}
+	for _, backup_endpoint in ipairs(backup.endpoints.data or {}) do
+		local endpoint_exists = disp_lib.does_endpoint_exist(backup_endpoint.endpoint)
+		local has_pkg = true
+		for _, pkg in ipairs(backup_endpoint.packages) do
+			if not backup_util:package_installed(pkg) then
+				has_pkg = false
+				break
+			end
+		end
+		if endpoint_exists and backup_endpoint.packages and has_pkg then
+			if not backup:apply_run_endpoint(backup_endpoint, errors) then
+				global_revert = true
+				break
+			end
+		else
+			table.insert(new_data, backup_endpoint)
+		end
+	end
+
+	backup.endpoints.data = new_data
+	if global_revert then
+		backup:revert_changes()
+	else
+		backup:apply_changes(true)
+		if #backup.endpoints.data > 0 then
+			fs.writefile(backup.RESTORE_PATH, json.stringify(backup.endpoints))
+		else
+			fs.remove(backup.RESTORE_PATH)
+		end
+	end
+	if backup.ubus_connection then
+		backup.ubus_connection:send("vuci.notify", { event = "backup_pkg_install" })
+	end
+	backup_util:success_response(errors, nil, backup)
+elseif ACTION == "validate" then
+	local packages_needed = {}
+	local keep_packages = {}
+	local ipv4_addr, ipv6_addr, http_port, https_port, sme
+	for pkg in pairs(backup.endpoints.packages or {}) do
+		if backup.available_packages[pkg] then
+			packages_needed[pkg] = backup.available_packages[pkg]
+		end
+	end
+	for _, backup_endpoint in ipairs(backup.endpoints.data or {}) do
+		if backup_endpoint.endpoint == "/interfaces/config" and backup_endpoint.data then
+			local section
+			backup_util:foreach_config(backup_endpoint.data, function(data)
+				if data.id == "lan" and data.enabled == "1" then
+					section = data
+					return false
+				end
+			end)
+			if not section then
+				backup_util:foreach_config(backup_endpoint.data, function(data)
+					if (data.area_type == "lan" or not data.area_type) and data.enabled == "1" and ((data.ipaddr and data.ipaddr ~= "") or (data.ip6addr and data.ip6addr ~= "")) then
+						section = data
+						return false
+					end
+				end)
+			end
+			if section then
+				ipv4_addr = section.ipaddr ~= "" and section.ipaddr or nil
+				ipv6_addr = section.ip6addr ~= "" and section.ip6addr or nil
+			end
+
+			if ipv6_addr and ipv6_addr:find("/") then
+				ipv6_addr = ipv6_addr:sub(1, ipv6_addr:find("/") - 1)
+			end
+
+			if not ipv4_addr and not ipv6_addr then
+				ipv4_addr = board:get_default_lan_ip()
+			end
+		elseif backup_endpoint.endpoint == "/access_control/webui/config" and backup_endpoint.data then
+			local data = backup_endpoint.data[1]
+			if data and data.listen_http then
+				http_port = data.listen_http
+			end
+			if data and data.listen_https then
+				https_port = data.listen_https
+			end
+		end
+	end
+
+	-- need to keep packages that are already installed on device
+	for pkg in pairs(packages_needed) do
+		if backup.device_packages[pkg] then
+			keep_packages[pkg] = true
+		end
+	end
+
+	for pkg in pairs(keep_packages) do
+		backup.installed_packages[pkg] = nil
+		packages_needed[pkg] = nil
+	end
+
+	backup:revert_changes()
+	local info = backup_util:format_return_info(backup, packages_needed)
+	print(json.stringify({
+		information = info,
+		ipv4_addr = ipv4_addr,
+		ipv6_addr = ipv6_addr,
+		http_port = http_port,
+		https_port = https_port
+	}))
+end
+
+backup_util:exit()

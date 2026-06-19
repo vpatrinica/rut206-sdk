@@ -1,0 +1,80 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+
+[ -f /etc/config/snmptrap ] || exit 0
+
+PACKAGE_NAME="snmptrap"
+
+fix_events_log_signal_strength() {
+	local sec="$1"
+	local modem_id="$2"
+	local threshold=0
+
+	config_get type "$sec" type
+	config_get event "$sec" event
+
+	[ "$type" != "eventtrap" ] || [ "$event" != "Signal strength" ] && return
+
+	uci_set "$PACKAGE_NAME" "$sec" "type" "gsm"
+	uci_set "$PACKAGE_NAME" "$sec" "name" "signalstrtrap"
+	uci_set "$PACKAGE_NAME" "$sec" "signal_trigger" "range"
+	[ -n "$modem_id" ] && uci_set "$PACKAGE_NAME" "$sec" "modem" "$modem_id"
+
+	config_get event_mark "$sec" event_mark
+
+	if [ "$event_mark" = "all" ]; then
+		uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-130,0"
+	else
+		threshold=$(echo "$event_mark" | \
+			awk '{for (i=1; i<=NF; i++) if ($i ~ /^-?[0-9]+$/) print $i}')
+
+		case "${threshold:--40}" in
+			-50) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-59,-50" ;;
+			-60) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-74,-60" ;;
+			-75) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-92,-75" ;;
+			-93) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-97,-93" ;;
+			-98) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-112,-98" ;;
+			-113) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-130,-113" ;;
+			*) uci_set "$PACKAGE_NAME" "$sec" "signal_range" "-49,0" ;;
+		esac
+	fi
+
+	uci_remove "$PACKAGE_NAME" "$sec" "event"
+	uci_remove "$PACKAGE_NAME" "$sec" "event_mark"
+}
+
+fix_gsm_signal_strength() {
+	local sec="$1"
+
+	config_get type "$sec" type
+	config_get name "$sec" name
+
+	[ "$type" != "gsm" ] || [ "$name" != "signalstrtrap" ] && return
+
+	uci_set "$PACKAGE_NAME" "$sec" "signal_trigger" "lt"
+}
+
+json_load_file "/etc/board.json"
+json_select hwinfo
+json_get_var dual_modem dual_modem
+[ -n "$dual_modem" ] && [ "$dual_modem" = "1" ] && {
+	json_select ..
+	json_select modems
+	json_get_keys keys
+	for var in $keys; do
+		json_select "$var"
+		json_get_var modem_id id
+		break
+	done
+}
+
+config_load "$PACKAGE_NAME"
+
+config_foreach fix_gsm_signal_strength trap
+config_foreach fix_events_log_signal_strength trap "$modem_id"
+
+uci_commit "$PACKAGE_NAME"
+
+exit 0

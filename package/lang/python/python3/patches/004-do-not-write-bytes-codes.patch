@@ -1,0 +1,22 @@
+Index: Python-3.11.7/Python/initconfig.c
+===================================================================
+--- Python-3.11.7.orig/Python/initconfig.c
++++ Python-3.11.7/Python/initconfig.c
+@@ -198,7 +198,7 @@ int Py_NoSiteFlag = 0; /* Suppress 'impo
+ int Py_BytesWarningFlag = 0; /* Warn on str(bytes) and str(buffer) */
+ int Py_FrozenFlag = 0; /* Needed by getpath.c */
+ int Py_IgnoreEnvironmentFlag = 0; /* e.g. PYTHONPATH, PYTHONHOME */
+-int Py_DontWriteBytecodeFlag = 0; /* Suppress writing bytecode files (*.pyc) */
++int Py_DontWriteBytecodeFlag = 1; /* Suppress writing bytecode files (*.pyc) */
+ int Py_NoUserSiteDirectory = 0; /* for -s and site.py */
+ int Py_UnbufferedStdioFlag = 0; /* Unbuffered binary std{in,out,err} */
+ int Py_HashRandomizationFlag = 0; /* for -R and PYTHONHASHSEED */
+@@ -798,7 +798,7 @@ config_init_defaults(PyConfig *config)
+     config->interactive = 0;
+     config->optimization_level = 0;
+     config->parser_debug= 0;
+-    config->write_bytecode = 1;
++    config->write_bytecode = 0;
+     config->verbose = 0;
+     config->quiet = 0;
+     config->user_site_directory = 1;

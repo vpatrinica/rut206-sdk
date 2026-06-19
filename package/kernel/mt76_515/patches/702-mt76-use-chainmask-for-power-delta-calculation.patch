@@ -1,0 +1,46 @@
+Author: Allen Ye <allen.ye@mediatek.com>
+Date:   Thu Nov 2 18:02:57 2023 +0800
+
+    wifi: mt76: use chainmask for power delta calculation
+    
+    The power gain value is related to total TX path, so change the
+    calculation to use per-phy chainmask.
+    
+    Signed-off-by: Allen Ye <allen.ye@mediatek.com>
+    Signed-off-by: Shayne Chen <shayne.chen@mediatek.com>
+    Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+
+--- a/eeprom.c
++++ b/eeprom.c
+@@ -385,7 +385,7 @@
+ 	if (!np)
+ 		return target_power;
+ 
+-	txs_delta = mt76_get_txs_delta(np, hweight8(phy->antenna_mask));
++	txs_delta = mt76_get_txs_delta(np, hweight16(phy->chainmask));
+ 
+ 	val = mt76_get_of_array(np, "rates-cck", &len, ARRAY_SIZE(dest->cck));
+ 	mt76_apply_array_limit(dest->cck, ARRAY_SIZE(dest->cck), val,
+--- a/mac80211.c
++++ b/mac80211.c
+@@ -1538,7 +1538,7 @@
+ 		     int *dbm)
+ {
+ 	struct mt76_phy *phy = hw->priv;
+-	int n_chains = hweight8(phy->antenna_mask);
++	int n_chains = hweight16(phy->chainmask);
+ 	int delta = mt76_tx_power_nss_delta(n_chains);
+ 
+ 	*dbm = DIV_ROUND_UP(phy->txpower_cur + delta, 2);
+--- a/mt7915/mcu.h
++++ b/mt7915/mcu.h
+@@ -519,7 +519,7 @@
+ mt7915_get_power_bound(struct mt7915_phy *phy, s8 txpower)
+ {
+ 	struct mt76_phy *mphy = phy->mt76;
+-	int n_chains = hweight8(mphy->antenna_mask);
++	int n_chains = hweight16(mphy->chainmask);
+ 
+ 	txpower = mt76_get_sar_power(mphy, mphy->chandef.chan, txpower * 2);
+ 	txpower -= mt76_tx_power_nss_delta(n_chains);

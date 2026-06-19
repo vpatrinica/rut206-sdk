@@ -1,0 +1,27 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+PROG="/usr/sbin/chilli"
+[ -x "$PROG" ] || PROG="/usr/local$PROG"
+
+migrate_chosen_theme() {
+    local section="$1"
+    local theme="$2"
+
+    [ -n "$theme" ] && {
+        uci_set chilli "$section" theme "$theme"
+    }
+}
+
+config_load chilli
+config_foreach migrate_chosen_theme chilli "$(uci_get landingpage general theme)"
+uci_remove landingpage general theme
+
+uci_commit chilli
+uci_commit landingpage
+
+# SQLite migrations
+$PROG -m &> /dev/null
+
+exit 0

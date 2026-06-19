@@ -1,0 +1,41 @@
+From: Vlad Buslov <vladbu@nvidia.com>
+Date: Feb. 1, 2023, 4:30 p.m. UTC
+Subject: netfilter: flowtable: fixup UDP timeout depending on ct state
+
+Currently flow_offload_fixup_ct() function assumes that only replied UDP
+connections can be offloaded and hardcodes UDP_CT_REPLIED timeout value. To
+enable UDP NEW connection offload in following patches extract the actual
+connections state from ct->status and set the timeout according to it.
+
+Signed-off-by: Vlad Buslov <vladbu@nvidia.com>
+---
+
+Notes:
+    Changes V5 -> V6:
+    
+    - Revert the patch to V2 version. Pablo is going to fix the issue of
+    netfilter's flow table not updating ct->status flags.
+    
+    Changes V3 -> V4:
+    
+    - Rework the patch to decouple netfilter and act_ct timeout fixup
+    algorithms.
+
+ net/netfilter/nf_flow_table_core.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+--- a/net/netfilter/nf_flow_table_core.c
++++ b/net/netfilter/nf_flow_table_core.c
+@@ -185,8 +185,11 @@ static void flow_offload_fixup_ct(struct
+ 		timeout -= tn->offload_timeout;
+ 	} else if (l4num == IPPROTO_UDP) {
+ 		struct nf_udp_net *tn = nf_udp_pernet(net);
++		enum udp_conntrack state =
++			test_bit(IPS_SEEN_REPLY_BIT, &ct->status) ?
++			UDP_CT_REPLIED : UDP_CT_UNREPLIED;
+ 
+-		timeout = tn->timeouts[UDP_CT_REPLIED];
++		timeout = tn->timeouts[state];
+ 		timeout -= tn->offload_timeout;
+ 	} else {
+ 		return;

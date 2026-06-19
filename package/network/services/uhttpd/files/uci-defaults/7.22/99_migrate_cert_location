@@ -1,0 +1,18 @@
+#!/bin/sh
+
+OLD_DIR="/etc/"
+NEW_DIR="/etc/certificates/"
+
+[ -d "$NEW_DIR" ] || exit 1
+
+for FILE in uhttpd.crt uhttpd.key uhttpd-ca.crt uhttpd-ca.key; do
+	[ -f "${OLD_DIR}${FILE}" ] || continue
+	for CONFIG_FILE in /etc/config/*; do
+		grep -qsF "${OLD_DIR}${FILE}" "$CONFIG_FILE" && {
+			sed -i "s|${OLD_DIR}${FILE}|/etc/certificates/${FILE}|g" "$CONFIG_FILE"
+		}
+	done
+	mv "${OLD_DIR}${FILE}" "/etc/certificates/${FILE}"
+done
+
+exit 0

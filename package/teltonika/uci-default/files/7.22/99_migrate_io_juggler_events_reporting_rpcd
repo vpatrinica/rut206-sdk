@@ -1,0 +1,25 @@
+#!/bin/sh
+. /lib/functions.sh
+
+[ -e "/etc/config/rpcd" ] || exit 0
+
+migrate_access_list(){
+	local group=$1
+
+	check_access_list(){
+		local item=$1
+		if echo "$item" | grep -qE '^!?services/io/juggler|^!?services/events_reporting\*$'; then
+			uci_remove_list "rpcd" "$group" "$mode" "$item"
+		fi
+	}
+
+	for mode in read write; do
+		config_list_foreach "$group" "$mode" check_access_list
+	done
+}
+
+config_load rpcd
+config_foreach migrate_access_list group
+uci_commit rpcd
+
+exit 0

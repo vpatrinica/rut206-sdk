@@ -1,0 +1,253 @@
+Index: emailrelay-2025-12-22/configure.ac
+===================================================================
+--- emailrelay-2025-12-22.orig/configure.ac
++++ emailrelay-2025-12-22/configure.ac
+@@ -122,6 +122,8 @@ AC_ARG_WITH([mbedtls],AS_HELP_STRING([--
+ GCONFIG_FN_TLS
+ AC_ARG_WITH([pam],AS_HELP_STRING([--with-pam],[use linux pam for authentication (default auto)]))
+ GCONFIG_FN_WITH_PAM
++AC_ARG_WITH([dynlog],AS_HELP_STRING([--with-dynlog],[use logd for dynamic log level recognition (default auto)]))
++GCONFIG_FN_DYNAMIC_LOGGING
+ 
+ dnl directory tweaking -- define e_ prefixed directory variables
+ dnl
+Index: emailrelay-2025-12-22/m4/acinclude.m4
+===================================================================
+--- emailrelay-2025-12-22.orig/m4/acinclude.m4
++++ emailrelay-2025-12-22/m4/acinclude.m4
+@@ -2994,3 +2994,28 @@ AC_DEFUN([GCONFIG_FN_WITH_PAM],
+ 	AM_CONDITIONAL([GCONFIG_PAM],[test "$gconfig_use_pam" = "yes"])
+ ])
+ 
++AC_DEFUN([GCONFIG_FN_DYNAMIC_LOGGING],[
++	if test "$with_dynlog" = "yes" ; then
++		AC_DEFINE([HAVE_DYNAMIC_LOGGING],1,[Define for dynamic logging])
++		gconfig_save_LIBS="$LIBS"
++		AC_SEARCH_LIBS([logger_init], [tlt-logger],
++			[
++				if test "$ac_cv_search_logger_init" = "none required" ; then
++					DYNAMIC_LOGGING_LIBS=""
++				else
++					DYNAMIC_LOGGING_LIBS="$ac_cv_search_logger_init"
++				fi
++			],
++			[
++				if test "$ac_cv_search_logger_init" = "" ; then
++					AC_MSG_ERROR([tlt-logger library not found - check that libtlt-logger is installed])
++				else
++					DYNAMIC_LOGGING_LIBS="$ac_cv_search_logger_init"
++				fi
++			])
++		LIBS="$gconfig_save_LIBS"
++	else
++		DYNAMIC_LOGGING_LIBS=""
++	fi
++	AC_SUBST([DYNAMIC_LOGGING_LIBS])
++])
+Index: emailrelay-2025-12-22/src/main/Makefile.am
+===================================================================
+--- emailrelay-2025-12-22.orig/src/main/Makefile.am
++++ emailrelay-2025-12-22/src/main/Makefile.am
+@@ -199,6 +199,7 @@ else
+  $(top_builddir)/src/gssl/libgssl.a \
+  $(top_builddir)/src/glib/libglib.a \
+  $(GCONFIG_TLS_LIBS) \
++ $(DYNAMIC_LOGGING_LIBS) \
+  $(OS_LIBS)
+ endif
+ 
+@@ -218,6 +219,7 @@ if GCONFIG_WINDOWS
+  $(top_builddir)/src/win32/libwin32.a \
+  $(top_builddir)/src/glib/libglib.a \
+  $(GCONFIG_TLS_LIBS) \
++ $(DYNAMIC_LOGGING_LIBS) \
+  $(OS_LIBS)
+ endif
+ 
+@@ -227,6 +229,7 @@ if GCONFIG_WINDOWS
+  emailrelay_passwd_LDADD = \
+  $(top_builddir)/src/gssl/libgssl.a \
+  $(top_builddir)/src/glib/libglib.a \
++ $(DYNAMIC_LOGGING_LIBS) \
+  $(GCONFIG_TLS_LIBS) \
+  $(OS_LIBS)
+ else
+@@ -235,6 +238,7 @@ else
+  $(top_builddir)/src/gssl/libgssl.a \
+  $(top_builddir)/src/glib/libglib.a \
+  $(GCONFIG_TLS_LIBS) \
++ $(DYNAMIC_LOGGING_LIBS) \
+  $(OS_LIBS)
+ endif
+ 
+@@ -262,6 +266,7 @@ endif
+ emailrelay_keygen_LDADD = \
+  $(top_builddir)/src/gssl/libgsslkeygen.a \
+  $(GCONFIG_TLS_LIBS) \
++ $(DYNAMIC_LOGGING_LIBS) \
+  $(OS_LIBS)
+ else
+ if GCONFIG_TLS_USE_MBEDTLS
+@@ -272,6 +277,7 @@ endif
+ emailrelay_keygen_LDADD = \
+   $(top_builddir)/src/gssl/libgsslkeygen.a \
+   $(GCONFIG_TLS_LIBS) \
++  $(DYNAMIC_LOGGING_LIBS) \
+   $(OS_LIBS)
+ endif
+ endif
+Index: emailrelay-2025-12-22/src/main/main.cpp
+===================================================================
+--- emailrelay-2025-12-22.orig/src/main/main.cpp
++++ emailrelay-2025-12-22/src/main/main.cpp
+@@ -28,6 +28,12 @@
+ #include "gsocket.h"
+ #include <exception>
+ #include <cstdlib>
++#ifdef HAVE_DYNAMIC_LOGGING
++extern "C" {
++	#include <tlt_logger.h>
++	#include <syslog.h>
++}
++#endif
+ 
+ namespace Main
+ {
+@@ -63,6 +69,9 @@ int main( int argc , char * argv [] )
+ 	bool ok = false ;
+ 	try
+ 	{
++#ifdef HAVE_DYNAMIC_LOGGING
++		logger_init_ext(L_SYSTEM, L_TYPE_SYSLOG, "emailrelay", LOG_PID, LOG_MAIL);
++#endif
+ 		G::Arg arg( argc , argv ) ;
+ 
+ 		#if GCONFIG_ENABLE_SUBMISSION
+Index: emailrelay-2025-12-22/src/glib/glogoutput_unix.cpp
+===================================================================
+--- emailrelay-2025-12-22.orig/src/glib/glogoutput_unix.cpp
++++ emailrelay-2025-12-22/src/glib/glogoutput_unix.cpp
+@@ -24,6 +24,12 @@
+ #include <syslog.h>
+ #include <iostream>
+ 
++#ifdef HAVE_DYNAMIC_LOGGING
++extern "C" {
++	#include <tlt_logger.h>
++}
++#endif
++
+ namespace G
+ {
+ 	namespace LogOutputImp
+@@ -44,6 +50,19 @@ namespace G
+ 			if( facility == G::LogOutput::SyslogFacility::Local7 ) return LOG_LOCAL7 ; // NOLINT
+ 			return LOG_USER ; // NOLINT
+ 		}
++#ifdef HAVE_DYNAMIC_LOGGING
++		log_level_type decode_tlt( G::Log::Severity severity )
++		{
++			if( severity == G::Log::Severity::Debug ) return L_DEBUG ;
++			if( severity == G::Log::Severity::InfoMoreVerbose ) return L_DEBUG ;
++			if( severity == G::Log::Severity::InfoVerbose ) return L_DEBUG ;
++			if( severity == G::Log::Severity::InfoSummary ) return L_INFO ;
++			if( severity == G::Log::Severity::Warning ) return L_WARNING ;
++			if( severity == G::Log::Severity::Error ) return L_ERROR ;
++			if( severity == G::Log::Severity::Assertion ) return L_CRIT ;
++			return L_INFO ; // default
++		}
++#else
+ 		int decode( G::Log::Severity severity )
+ 		{
+ 			if( severity == G::Log::Severity::Warning ) return LOG_WARNING ;
+@@ -56,11 +75,19 @@ namespace G
+ 		{
+ 			return decode(facility) | decode(severity) ; // NOLINT
+ 		}
++#endif
+ 	}
+ }
+ 
+ void G::LogOutput::osoutput( int fd , G::Log::Severity severity , char * message , std::size_t n )
+ {
++#ifdef HAVE_DYNAMIC_LOGGING
++	if(m_config.m_use_syslog)
++	{
++		message[n] = '\0' ; // sic
++		::_log( LogOutputImp::decode_tlt(severity) , "%s" , message ) ; // NOLINT
++	}
++#else
+ 	if( m_config.m_use_syslog && severity != Log::Severity::Debug )
+ 	{
+ 		message[n] = '\0' ; // sic
+@@ -79,13 +106,16 @@ void G::LogOutput::osoutput( int fd , G:
+ 		message[n] = '\n' ; // sic
+ 		GDEF_IGNORE_RETURN ::write( fd , message , n+1U ) ;
+ 	}
++#endif
+ }
+ 
+ void G::LogOutput::osinit()
+ {
+ 	m_handle = 1 ; // pacify -Wunused-private-field
++#ifndef HAVE_DYNAMIC_LOGGING
+ 	if( m_config.m_use_syslog )
+ 		::openlog( nullptr , LOG_PID , LogOutputImp::decode(m_config.m_facility) ) ;
++#endif
+ }
+ 
+ #ifndef G_LIB_SMALL
+@@ -96,7 +126,9 @@ void G::LogOutput::register_( const std:
+ 
+ void G::LogOutput::oscleanup() const noexcept
+ {
++#ifndef HAVE_DYNAMIC_LOGGING
+ 	if( m_config.m_use_syslog )
+ 		::closelog() ;
++#endif
+ }
+ 
+Index: emailrelay-2025-12-22/src/glib/glogoutput.cpp
+===================================================================
+--- emailrelay-2025-12-22.orig/src/glib/glogoutput.cpp
++++ emailrelay-2025-12-22/src/glib/glogoutput.cpp
+@@ -283,8 +283,10 @@ G::LogStream & G::LogOutput::start( Log:
+ 
+ 	LogStream & logstream = LogOutputImp::ostream1() ;
+ 	logstream << std::dec ;
++#ifndef HAVE_DYNAMIC_LOGGING
+ 	if( m_exename.length() )
+ 		logstream << m_exename << ": " ;
++#endif
+ 	if( m_config.m_with_timestamp )
+ 		appendTimeTo( logstream ) ;
+ 	if( m_config.m_with_level )
+Index: emailrelay-2025-12-22/src/main/configuration.cpp
+===================================================================
+--- emailrelay-2025-12-22.orig/src/main/configuration.cpp
++++ emailrelay-2025-12-22/src/main/configuration.cpp
+@@ -621,14 +621,19 @@ G::StringArray Main::Configuration::disp
+ 
+ G::LogOutput::Config Main::Configuration::logOutputConfig( bool has_gui ) const
+ {
++#ifdef HAVE_DYNAMIC_LOGGING
++	bool enable_all_levels = true ;
++#else
++	bool enable_all_levels = false ;
++#endif
+ 	return
+ 		G::LogOutput::Config()
+ 			.set_output_enabled( log() )
+-			.set_summary_info( log() )
+-			.set_verbose_info( contains("verbose") )
+-			.set_more_verbose_info( m_map.count("verbose") > 1U )
+-			.set_debug( debug() )
+-			.set_with_level( true)
++			.set_summary_info( log() || enable_all_levels )
++			.set_verbose_info( contains("verbose") || enable_all_levels )
++			.set_more_verbose_info( m_map.count("verbose") > 1U || enable_all_levels )
++			.set_debug( debug() || enable_all_levels )
++			.set_with_level( !enable_all_levels)
+ 			.set_with_timestamp( contains("log-time") )
+ 			.set_with_context( contains("log-address") )
+ 			.set_strip( !debug() )

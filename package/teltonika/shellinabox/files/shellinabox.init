@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+
+USE_PROCD=1
+
+start_service() {
+    # No service to start, this only handles reload triggers
+    return 0
+}
+
+service_triggers()
+{
+    procd_add_reload_trigger "cli"
+}
+
+reload_service() {
+    kill -HUP $(pgrep uhttpd) 2>/dev/null
+}

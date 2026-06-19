@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+# replace existing mwan ucitrack entry
+uci_remove "ucitrack" "@mwan3[-1]"
+uci_add "ucitrack" "mwan3"
+uci_set "ucitrack" "$CONFIG_SECTION" "exec" "/etc/init.d/mwan3 reload"
+uci_commit ucitrack
+
+uci_get "mwan3" "globals" >/dev/null || {
+	uci_add "mwan3" "globals" >/dev/null
+	uci_rename "mwan3" "@globals[-1]" "globals" >/dev/null
+	uci_set "mwan3" "globals" "local_source" "none" >/dev/null
+	uci_commit "mwan3"
+}
+
+# remove LuCI cache
+rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
+
+exit 0

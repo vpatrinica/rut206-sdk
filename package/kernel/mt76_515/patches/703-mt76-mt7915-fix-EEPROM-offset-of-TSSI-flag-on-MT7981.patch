@@ -1,0 +1,26 @@
+Author: StanleyYP Wang <StanleyYP.Wang@mediatek.com>
+Date:   Mon Nov 6 22:38:53 2023 +0000
+
+    wifi: mt76: mt7915: fix EEPROM offset of TSSI flag on MT7981
+    
+    The offset of the TSSI flag on the EEPROM of MT7981 devices was wrong.
+    Set the correct offset instead.
+    
+    Fixes: 6bad146d162e ("wifi: mt76: mt7915: add support for MT7981")
+    Signed-off-by: StanleyYP Wang <StanleyYP.Wang@mediatek.com>
+    Signed-off-by: Daniel Golle <daniel@makrotopia.org>
+    Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+
+--- a/mt7915/eeprom.h
++++ b/mt7915/eeprom.h
+@@ -144,7 +144,8 @@
+ mt7915_tssi_enabled(struct mt7915_dev *dev, enum nl80211_band band)
+ {
+ 	u8 *eep = dev->mt76.eeprom.data;
+-	u8 val = eep[MT_EE_WIFI_CONF + 7];
++	u8 offs = is_mt7981(&dev->mt76) ? 8 : 7;
++	u8 val = eep[MT_EE_WIFI_CONF + offs];
+ 
+ 	if (band == NL80211_BAND_2GHZ)
+ 		return val & MT_EE_WIFI_CONF7_TSSI0_2G;

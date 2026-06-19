@@ -1,0 +1,22 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+check_enabled() {
+	local section="$1"
+	config_get_bool enabled "$section" enabled
+	if [ "$enabled" = 1 ]; then
+		uci_add "network" "rule" "ipsec_rule"
+		uci_set "network" "ipsec_rule" "action_group" "lookup"
+		uci_set "network" "ipsec_rule" "tos" "0"
+		uci_set "network" "ipsec_rule" "priority" "220"
+		uci_set "network" "ipsec_rule" "invert" "0"
+		uci_set "network" "ipsec_rule" "lookup" "220"
+		uci_commit "network"
+		exit 0
+	fi
+}
+
+config_load "ipsec"
+config_foreach check_enabled "remote"
+

@@ -1,0 +1,11 @@
+#!/bin/sh
+release_ifbdev() {
+	local iface="$1"
+	local state_file="/var/run/qos/$iface.ifbdev"
+	if [ -f "$state_file" ]; then
+		local idx=$(cat "$state_file")
+		rm "$state_file" "/var/run/qos/ifb$idx.lock"
+	fi
+}
+[ "$ACTION" = ifup ] && /etc/init.d/qos enabled && /usr/local/usr/lib/qos/generate.sh interface "$INTERFACE" | sh
+[ "$ACTION" = ifdown ] && release_ifbdev "$INTERFACE"

@@ -1,0 +1,11 @@
+--- a/net/mac80211/mesh.c
++++ b/net/mac80211/mesh.c
+@@ -1733,7 +1733,7 @@ static void mesh_bss_info_changed(struct
+ 	for_each_set_bit(bit, ifmsh->mbss_changed,
+ 			 sizeof(changed) * BITS_PER_BYTE) {
+ 		clear_bit(bit, ifmsh->mbss_changed);
+-		changed |= BIT(bit);
++		changed |= BIT_ULL(bit);
+ 	}
+ 
+ 	if (sdata->vif.bss_conf.enable_beacon &&

@@ -1,0 +1,9 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+CONF="etherwake"
+
+[ -f "$UCI_CONFIG_DIR/${CONF}" ] || return 0
+uci_set "$CONF" "setup" "interface" "br-lan"
+uci_commit "$CONF"

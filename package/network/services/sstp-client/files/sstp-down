@@ -1,0 +1,8 @@
+#!/bin/sh
+
+section_name="${IFNAME#*-}"
+service=$(uci -q get "network.${section_name}.proto")
+[ "$service" != "sstp" ] && exit 0
+
+[ -f /var/state/sstp/"${section_name}".status ] && rm /var/state/sstp/"${section_name}".status
+exit 0

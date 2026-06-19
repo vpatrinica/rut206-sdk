@@ -1,0 +1,13 @@
+{
+  "network/routes/bfd": {
+    "title": "BFD",
+    "index": 40,
+    "acls": ["network/routes/bfd"],
+    "view": "network/BFD",
+    "depends": {
+      "packages": {
+        "anyOf": ["bfdd-frr", "bfdd-frr8"]
+      }
+    }
+  }
+}

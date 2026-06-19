@@ -1,0 +1,1 @@
+{"system/admin/multiusers/2fa":{"description":"2fa","read":{"api":{"/2fa/*":["*"]}},"write":{"api":["/2fa/*"]}}}

@@ -1,0 +1,8 @@
+{
+  "system/maintenance/auto_reboot/wireless_reboot": {
+    "title": "Wireless Reboot",
+    "index": 3,
+    "view": "services/WirelessReboot",
+    "acls": ["system/maintenance/auto_reboot/wireless_reboot"]
+  }
+}

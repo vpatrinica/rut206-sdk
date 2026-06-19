@@ -1,0 +1,11 @@
+{
+  "user": "pptpd",
+  "access": {
+    "network.interface": {
+      "methods": ["notify_proto"]
+    },
+    "ip": {
+      "methods": ["ip"]
+    }
+  }
+}

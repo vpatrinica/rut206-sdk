@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+rm_server_bridge() {
+	local sid="$1"
+	config_get server_bridge "$sid" "server_bridge"
+	[ -n "$server_bridge" ] && uci_remove "openvpn" "$sid" "server_bridge"
+}
+
+config_load "openvpn"
+config_foreach "rm_server_bridge" "openvpn"
+uci_commit "openvpn"
+
+exit 0

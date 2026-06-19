@@ -1,0 +1,362 @@
+index dab4d6c..4361266 100644
+--- a/file.c
++++ b/file.c
+@@ -244,7 +244,7 @@ done:
+ /*
+  * extract the next argument from the command line
+  */
+-static int next_arg(struct uci_context *ctx, bool required, bool name, bool package)
++static int next_arg(struct uci_context *ctx, bool required)
+ {
+ 	struct uci_parse_context *pctx = ctx->pctx;
+ 	size_t val, ptr;
+@@ -257,16 +257,11 @@ static int next_arg(struct uci_context *ctx, bool required, bool name, bool pack
+ 	} else {
+ 		parse_str(ctx, &ptr);
+ 	}
+-	if (!pctx_char(pctx, val)) {
+-		if (required)
+-			uci_parse_error(ctx, "insufficient arguments");
+-		goto done;
+-	}
+ 
+-	if (name && !uci_validate_str(pctx_str(pctx, val), name, package))
+-		uci_parse_error(ctx, "invalid character in name field");
++	if (!pctx_char(pctx, val) && required) {
++		uci_parse_error(ctx, "insufficient arguments");
++	}
+ 
+-done:
+ 	return val;
+ }
+ 
+@@ -290,7 +285,7 @@ int uci_parse_argument(struct uci_context *ctx, FILE *stream, char **str, char *
+ 		uci_getln(ctx, 0);
+ 	}
+ 
+-	ofs_result = next_arg(ctx, false, false, false);
++	ofs_result = next_arg(ctx, false);
+ 	*result = pctx_str(ctx->pctx, ofs_result);
+ 	*str = pctx_cur_str(ctx->pctx);
+ 
+@@ -344,7 +339,7 @@ static void assert_eol(struct uci_context *ctx)
+ 	int ofs_tmp;
+ 
+ 	skip_whitespace(ctx);
+-	ofs_tmp = next_arg(ctx, false, false, false);
++	ofs_tmp = next_arg(ctx, false);
+ 	tmp = pctx_str(ctx->pctx, ofs_tmp);
+ 	if (*tmp && (ctx->flags & UCI_FLAG_STRICT))
+ 		uci_parse_error(ctx, "too many arguments");
+@@ -398,9 +393,11 @@ static void uci_parse_package(struct uci_context *ctx, bool single)
+ 	if (uci_increase_pos(pctx, strlen(pctx_cur_str(pctx)) + 1))
+ 		uci_parse_error(ctx, "package without name");
+ 
+-	ofs_name = next_arg(ctx, true, true, true);
+-	assert_eol(ctx);
++	ofs_name = next_arg(ctx, true);
+ 	name = pctx_str(pctx, ofs_name);
++	if (!uci_validate_str(name, UCI_STR_NAME))
++		uci_parse_error(ctx, "invalid character in name field");
++	assert_eol(ctx);
+ 	if (single)
+ 		return;
+ 
+@@ -431,12 +428,11 @@ static void uci_parse_config(struct uci_context *ctx)
+ 	if (uci_increase_pos(pctx, strlen(pctx_cur_str(pctx)) + 1))
+ 		uci_parse_error(ctx, "config without name");
+ 
+-	ofs_type = next_arg(ctx, true, false, false);
+-	type = pctx_str(pctx, ofs_type);
+-	if (!uci_validate_type(type))
++	ofs_type = next_arg(ctx, true);
++	if (!uci_validate_type(pctx_str(pctx, ofs_type)))
+ 		uci_parse_error(ctx, "invalid character in type field");
+ 
+-	ofs_name = next_arg(ctx, false, true, false);
++	ofs_name = next_arg(ctx, false);
+ 	assert_eol(ctx);
+ 	type = pctx_str(pctx, ofs_type);
+ 	name = pctx_str(pctx, ofs_name);
+@@ -445,6 +441,10 @@ static void uci_parse_config(struct uci_context *ctx)
+ 		ctx->internal = !pctx->merge;
+ 		UCI_NESTED(uci_add_section, ctx, pctx->package, type, &pctx->section);
+ 	} else {
++		if (!uci_validate_str(name, UCI_STR_NAME)) {
++			uci_parse_error(ctx, "invalid character in name field");
++		}
++
+ 		uci_fill_ptr(ctx, &ptr, &pctx->package->e);
+ 		e = uci_lookup_list(&pctx->package->sections, name);
+ 		if (e) {
+@@ -482,12 +482,19 @@ static void uci_parse_option(struct uci_context *ctx, bool list)
+ 	if (uci_increase_pos(pctx, strlen(pctx_cur_str(pctx)) + 1))
+ 		uci_parse_error(ctx, "option without name");
+ 
+-	ofs_name = next_arg(ctx, true, true, false);
+-	ofs_value = next_arg(ctx, false, false, false);
++	ofs_name = next_arg(ctx, true);
++	if (!uci_validate_name(pctx_str(pctx, ofs_name))) {
++		uci_parse_error(ctx, "invalid character in name field");
++	}
++
++	ofs_value = next_arg(ctx, false);
+ 	assert_eol(ctx);
+ 	name = pctx_str(pctx, ofs_name);
+ 	value = pctx_str(pctx, ofs_value);
+ 
++	if (pctx_char(pctx, ofs_value) && !uci_validate_text(value))
++		uci_parse_error(ctx, "invalid character in value field");
++
+ 	uci_fill_ptr(ctx, &ptr, &pctx->section->e);
+ 	e = uci_lookup_list(&pctx->section->options, name);
+ 	if (e)
+index 6ab1a85..dfc0e23 100644
+--- a/list.c
++++ b/list.c
+@@ -526,14 +526,19 @@ int uci_rename(struct uci_context *ctx, struct uci_ptr *ptr)
+ 	UCI_ASSERT(ctx, ptr->s);
+ 	UCI_ASSERT(ctx, ptr->value);
+ 
+-	if (ctx->enforce_unique_section_names && uci_lookup_list(&p->sections, ptr->value) != NULL) {
++	const char *new_section_name = ptr->value;
++	if (!uci_validate_str(new_section_name, UCI_STR_SECTION_TYPE)) {
++		UCI_THROW(ctx, UCI_ERR_INVAL);
++	}
++
++	if (ctx->enforce_unique_section_names && uci_lookup_list(&p->sections, new_section_name) != NULL) {
+ 		UCI_THROW(ctx, UCI_ERR_INVAL);
+ 	}
+ 
+ 	if (!internal && p->has_delta)
+-		uci_add_delta(ctx, &p->delta, UCI_CMD_RENAME, ptr->section, ptr->option, ptr->value);
++		uci_add_delta(ctx, &p->delta, UCI_CMD_RENAME, ptr->section, ptr->option, new_section_name);
+ 
+-	n = uci_strdup(ctx, ptr->value);
++	n = uci_strdup(ctx, new_section_name);
+ 	free(e->name);
+ 	e->name = n;
+ 
+@@ -568,6 +573,11 @@ int uci_add_section(struct uci_context *ctx, struct uci_package *p, const char *
+ 
+ 	UCI_HANDLE_ERR(ctx);
+ 	UCI_ASSERT(ctx, p != NULL);
++
++	if (!uci_validate_str(type, UCI_STR_SECTION_TYPE)) {
++		UCI_THROW(ctx, UCI_ERR_INVAL);
++	}
++
+ 	s = uci_alloc_section(p, type, NULL);
+ 	if (s && s->anonymous)
+ 		uci_fixup_section(ctx, s);
+@@ -636,6 +646,10 @@ int uci_add_list(struct uci_context *ctx, struct uci_ptr *ptr)
+ 	UCI_ASSERT(ctx, ptr->s);
+ 	UCI_ASSERT(ctx, ptr->value);
+ 
++	if (!uci_validate_str(ptr->value, UCI_STR_OPTION_VALUE)) {
++		UCI_THROW(ctx, UCI_ERR_INVAL);
++	}
++
+ 	if (ptr->o) {
+ 		switch (ptr->o->type) {
+ 		case UCI_TYPE_STRING:
+@@ -722,21 +736,55 @@ int uci_set(struct uci_context *ctx, struct uci_ptr *ptr)
+ 			return 0;
+ 
+ 		return uci_delete(ctx, ptr);
+-	} else if (!ptr->o && ptr->option) { /* new option */
++	} else if (!ptr->o && ptr->option) {
++		/* new option */
++		if (!uci_validate_str(ptr->option, UCI_STR_NAME)) {
++			UCI_THROW(ctx, UCI_ERR_INVAL);
++		}
++
++		if (!uci_validate_str(ptr->value, UCI_STR_OPTION_VALUE)) {
++			UCI_THROW(ctx, UCI_ERR_INVAL);
++		}
++
+ 		ptr->o = uci_alloc_option(ptr->s, ptr->option, ptr->value);
+ 		ptr->last = &ptr->o->e;
+-	} else if (!ptr->s && ptr->section) { /* new section */
+-		ptr->s = uci_alloc_section(ptr->p, ptr->value, ptr->section);
++
++	} else if (!ptr->s && ptr->section) {
++		/* new section */
++		const char *section_type = ptr->value;
++		if (!uci_validate_str(section_type, UCI_STR_SECTION_TYPE)) {
++			UCI_THROW(ctx, UCI_ERR_INVAL);
++		}
++
++		const char *section_name = ptr->section;
++		if (!uci_validate_str(section_name, UCI_STR_NAME)) {
++			UCI_THROW(ctx, UCI_ERR_INVAL);
++		}
++
++		ptr->s = uci_alloc_section(ptr->p, section_type, section_name);
+ 		ptr->last = &ptr->s->e;
+-	} else if (ptr->o && ptr->option) { /* update option */
++
++	} else if (ptr->o && ptr->option) {
++		/* update option */
+ 		if (ptr->o->type != UCI_TYPE_STRING || strcmp(ptr->o->v.string, ptr->value)) {
++			if (!uci_validate_str(ptr->value, UCI_STR_OPTION_VALUE)) {
++				UCI_THROW(ctx, UCI_ERR_INVAL);
++			}
++
+ 			struct uci_option *o = ptr->o;
+ 			ptr->o = uci_alloc_option(ptr->s, ptr->option, ptr->value);
+ 			uci_free_option(o);
+ 			ptr->last = &ptr->o->e;
+ 		}
+-	} else if (ptr->s && ptr->section) { /* update section */
+-		char *s = uci_strdup(ctx, ptr->value);
++
++	} else if (ptr->s && ptr->section) {
++		/* update section type */
++		const char *section_type = ptr->value;
++		if (!uci_validate_str(section_type, UCI_STR_SECTION_TYPE)) {
++			UCI_THROW(ctx, UCI_ERR_INVAL);
++		}
++
++		char *s = uci_strdup(ctx, section_type);
+ 
+ 		if (ptr->s->type == uci_dataptr(ptr->s)) {
+ 			/* drop the in-section storage of type name */
+index 8104e4e..d73c8fe 100644
+--- a/uci_internal.h
++++ b/uci_internal.h
+@@ -45,10 +45,16 @@ struct uci_parse_context
+ extern const char *uci_confdir;
+ extern const char *uci_savedir;
+ 
++enum uci_str_type {
++	UCI_STR_NAME,
++	UCI_STR_SECTION_TYPE,
++	UCI_STR_OPTION_VALUE
++};
++
+ __private void *uci_malloc(struct uci_context *ctx, size_t size);
+ __private void *uci_realloc(struct uci_context *ctx, void *ptr, size_t size);
+ __private char *uci_strdup(struct uci_context *ctx, const char *str);
+-__private bool uci_validate_str(const char *str, bool name, bool package);
++__private bool uci_validate_str(const char *str, enum uci_str_type str_type);
+ __private void uci_add_delta(struct uci_context *ctx, struct uci_list *list, int cmd, const char *section, const char *option, const char *value);
+ __private void uci_free_delta(struct uci_delta *h);
+ __private struct uci_package *uci_alloc_package(struct uci_context *ctx, const char *name);
+@@ -75,17 +81,17 @@ __private int uci_load_delta(struct uci_context *ctx, struct uci_package *p, boo
+ 
+ static inline bool uci_validate_package(const char *str)
+ {
+-	return uci_validate_str(str, false, true);
++	return uci_validate_str(str, UCI_STR_NAME);
+ }
+ 
+ static inline bool uci_validate_type(const char *str)
+ {
+-	return uci_validate_str(str, false, false);
++	return uci_validate_str(str, UCI_STR_SECTION_TYPE);
+ }
+ 
+ static inline bool uci_validate_name(const char *str)
+ {
+-	return uci_validate_str(str, true, false);
++	return uci_validate_str(str, UCI_STR_NAME);
+ }
+ 
+ /* initialize a list head/item */
+index d61545d..19ab7d7 100644
+--- a/util.c
++++ b/util.c
+@@ -63,41 +63,70 @@ __private char *uci_strdup(struct uci_context *ctx, const char *str)
+ 	return ptr;
+ }
+ 
+-/*
+- * validate strings for names and types, reject special characters
+- * for names, only alphanum and _ is allowed (shell compatibility)
+- * for types, we allow more characters
+- */
+-__private bool uci_validate_str(const char *str, bool name, bool package)
++static bool uci_is_whitespace(char c)
+ {
+-	if (!*str)
+-		return false;
++	return c == '\t' || c == '\n' || c == '\r' || c == ' ';
++}
+ 
+-	for (; *str; str++) {
+-		unsigned char c = *str;
++static bool uci_is_control_code(char c)
++{
++	return c < 32;
++}
+ 
+-		if (isalnum(c) || c == '_')
+-			continue;
++static bool uci_is_alphanumeric(char c)
++{
++	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9');
++}
+ 
+-		if (c == '-' && package)
+-			continue;
++static bool uci_validate_char(char c, enum uci_str_type str_type)
++{
++	switch (str_type) {
++	case UCI_STR_NAME:
++		return uci_is_alphanumeric(c) || c == '_' || c == '-';
+ 
+-		if (name || (c < 33) || (c > 126))
+-			return false;
++	case UCI_STR_SECTION_TYPE:
++		return !uci_is_control_code(c) && !uci_is_whitespace(c);
++
++	case UCI_STR_OPTION_VALUE:
++		return !uci_is_control_code(c) || uci_is_whitespace(c);
++
++	default:
++		return false; // Unreachable
+ 	}
+-	return true;
+ }
+ 
+ bool uci_validate_text(const char *str)
+ {
+-	while (*str) {
+-		unsigned char c = *str;
++	return uci_validate_str(str, UCI_STR_OPTION_VALUE);
++}
+ 
+-		if (c < 32 && c != '\t' && c != '\n' && c != '\r')
+-			return false;
++/*
++ * validate strings for names and types, reject special characters
++ * for names, only alphanum and _ is allowed (shell compatibility)
++ * for types, we allow more characters
++ */
++__private bool uci_validate_str(const char *str, enum uci_str_type str_type)
++{
++	bool str_is_empty = false;
++	if (str != NULL) {
++		for (const char *cursor = str; *cursor != '\0'; cursor++) {
++			unsigned char c = *cursor;
+ 
+-		str++;
++			if (!uci_validate_char(c, str_type)) {
++				return false;
++			}
++		}
++
++		str_is_empty = *str == '\0';
++	} else {
++		str_is_empty = true;
+ 	}
++
++	// Option values can be an empty string, all other types can't
++	if (str_is_empty && str_type != UCI_STR_OPTION_VALUE) {
++		return false;
++	}
++
+ 	return true;
+ }
+ 

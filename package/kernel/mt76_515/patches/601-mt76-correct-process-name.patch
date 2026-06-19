@@ -1,0 +1,17 @@
+Index: mt76-2023-05-13-969b7b5e/util.h
+===================================================================
+--- mt76-2023-05-13-969b7b5e.orig/util.h
++++ mt76-2023-05-13-969b7b5e/util.h
+@@ -64,8 +64,12 @@ mt76_worker_setup(struct ieee80211_hw *h
+ 
+ 	if (fn)
+ 		w->fn = fn;
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0)
++	w->task = kthread_create(__mt76_worker_fn, w, "mt76-%s:%s", name, dev_name);
++#else
+ 	w->task = kthread_run(__mt76_worker_fn, w,
+ 			      "mt76-%s %s", name, dev_name);
++#endif
+ 
+ 	if (IS_ERR(w->task)) {
+ 		ret = PTR_ERR(w->task);

@@ -1,0 +1,76 @@
+Index: uhttpd-2021-03-21-15346de8/CMakeLists.txt
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/CMakeLists.txt
++++ uhttpd-2021-03-21-15346de8/CMakeLists.txt
+@@ -10,6 +10,7 @@ ADD_DEFINITIONS(-D_FILE_OFFSET_BITS=64 -
+ OPTION(TLS_SUPPORT "TLS support" ON)
+ OPTION(LUA_SUPPORT "Lua support" ON)
+ OPTION(UBUS_SUPPORT "ubus support" ON)
++OPTION(UHTTPD_TPM_SUPPORT "TPM2 support" OFF)
+ 
+ IF(APPLE)
+   INCLUDE_DIRECTORIES(/opt/local/include)
+@@ -35,9 +36,14 @@ IF(HAVE_SHADOW)
+     ADD_DEFINITIONS(-DHAVE_SHADOW)
+ ENDIF()
+ 
++IF(UHTTPD_TPM_SUPPORT)
++    ADD_DEFINITIONS(-DUHTTPD_TPM_SUPPORT)
++    LIST(APPEND UHTTPD_EXTRA_LIBS tpm_importer crypto)
++ENDIF()
++
+ ADD_EXECUTABLE(uhttpd ${SOURCES})
+ FIND_LIBRARY(libjson NAMES json-c json)
+-TARGET_LINK_LIBRARIES(uhttpd ubox dl json_script blobmsg_json ubus ${libjson} ${LIBS} cap tlt_logger)
++TARGET_LINK_LIBRARIES(uhttpd ubox dl json_script blobmsg_json ubus ${libjson} ${LIBS} ${UHTTPD_EXTRA_LIBS} cap tlt_logger )
+ 
+ SET(PLUGINS "")
+ IF(LUA_SUPPORT)
+Index: uhttpd-2021-03-21-15346de8/tls.c
+===================================================================
+--- uhttpd-2021-03-21-15346de8.orig/tls.c
++++ uhttpd-2021-03-21-15346de8/tls.c
+@@ -18,6 +18,9 @@
+  */
+ 
+ #include <dlfcn.h>
++#ifdef UHTTPD_TPM_SUPPORT
++#include <libtpm_importer.h>
++#endif
+ #include "uhttpd.h"
+ #include "tls.h"
+ 
+@@ -34,6 +37,8 @@ static void *ctx;
+ int uh_tls_init(const char *key, const char *crt, const char *ciphers)
+ {
+ 	static bool _init = false;
++	char *handle = NULL;
++	const char *key_to_use = key;
+ 
+ 	if (_init)
+ 		return 0;
+@@ -59,12 +64,23 @@ int uh_tls_init(const char *key, const c
+ 	
+ 	ops->context_no_renegotiation(ctx);
+ 
++#ifdef UHTTPD_TPM_SUPPORT
++	handle = ltpmi_get_handle(key);
++	if (handle) {
++		key_to_use = handle;
++		h_log(L_INFO, "Using TPM imported key handle for TLS\n");
++	}
++#endif
++
+ 	if (ops->context_set_crt_file(ctx, crt) ||
+-	    ops->context_set_key_file(ctx, key)) {
++	    ops->context_set_key_file(ctx, key_to_use)) {
+ 			h_log(L_CRIT, "Failed to load certificate/key files\n");
++			free(handle);
+ 			return -EINVAL;
+ 	}
+ 
++	free(handle);
++
+ 	if (ciphers && ops->context_set_ciphers(ctx, ciphers)) {
+ 		h_log(L_CRIT, "Failed to set cipher list");
+ 		return -EINVAL;

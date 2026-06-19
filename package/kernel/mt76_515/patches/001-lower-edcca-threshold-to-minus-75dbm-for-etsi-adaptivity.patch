@@ -1,0 +1,12 @@
+--- a/mt7603/mac.c
++++ b/mt7603/mac.c
+@@ -1607,7 +1607,7 @@
+ 	if (!dev->ed_monitor)
+ 		rxtd_6 |= FIELD_PREP(MT_RXTD_6_CCAED_TH, 0x34);
+ 	else
+-		rxtd_6 |= FIELD_PREP(MT_RXTD_6_CCAED_TH, 0x7d);
++		rxtd_6 |= FIELD_PREP(MT_RXTD_6_CCAED_TH, 0x69);
+ 
+ 	if (dev->ed_monitor && !dev->ed_strict_mode)
+ 		rxtd_6 |= FIELD_PREP(MT_RXTD_6_ACI_TH, 0x0f);
+

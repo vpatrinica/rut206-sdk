@@ -1,0 +1,44 @@
+From edbc58add3aed94e435e6e5582953f4ea1cc21c9 Mon Sep 17 00:00:00 2001
+From: Kaarle Ritvanen <kaarle.ritvanen@datakunkku.fi>
+Date: Fri, 21 Feb 2025 15:31:37 +0200
+Subject: [PATCH] nhrpd: ignore non-host addresses on NHRP ifaces
+
+Contemporary kernels automatically add link-local IPv6 addresses on GRE
+interfaces. This patch makes nhrpd ignore such and other non-host
+addresses when selecting the best protocol address, instead of
+discarding such an address after the selection.
+
+Signed-off-by: Kaarle Ritvanen <kaarle.ritvanen@datakunkku.fi>
+---
+ nhrpd/nhrp_interface.c | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/nhrpd/nhrp_interface.c b/nhrpd/nhrp_interface.c
+index e81a2efbb685..3237bf4ab54b 100644
+--- a/nhrpd/nhrp_interface.c
++++ b/nhrpd/nhrp_interface.c
+@@ -269,6 +269,9 @@ static void nhrp_interface_update_address(struct interface *ifp, afi_t afi,
+ 	frr_each (if_connected, ifp->connected, c) {
+ 		if (PREFIX_FAMILY(c->address) != family)
+ 			continue;
++		/* On NHRP interfaces a host prefix is required */
++		if (if_ad->configured && c->address->prefixlen != 8 * prefix_blen(c->address))
++			continue;
+ 		if (best == NULL) {
+ 			best = c;
+ 			continue;
+@@ -289,14 +292,6 @@ static void nhrp_interface_update_address(struct interface *ifp, afi_t afi,
+ 			continue;
+ 	}
+ 
+-	/* On NHRP interfaces a host prefix is required */
+-	if (best && if_ad->configured
+-	    && best->address->prefixlen != 8 * prefix_blen(best->address)) {
+-		zlog_notice("%s: %pFX is not a host prefix", ifp->name,
+-			    best->address);
+-		best = NULL;
+-	}
+-
+ 	/* Update address if it changed */
+ 	if (best)
+ 		prefix2sockunion(best->address, &addr);

@@ -1,0 +1,29 @@
+--- a/src/ap/ieee802_11.c
++++ b/src/ap/ieee802_11.c
+@@ -6118,9 +6118,12 @@
+ 			       struct sta_info *sta,
+ 			       const struct ieee80211_mgmt *mgmt)
+ {
+-	wpa_msg(hapd->msg_ctx, MSG_DEBUG,
+-		"deauthentication: STA=" MACSTR " reason_code=%d",
+-		MAC2STR(mgmt->sa), le_to_host16(mgmt->u.deauth.reason_code));
++	u16 reason_code = le_to_host16(mgmt->u.deauth.reason_code);
++	const char *reason_str = reason2str(reason_code);
++
++	wpa_msg(hapd->msg_ctx, MSG_DEBUG | MSG_LOGFILE,
++		"deauthentication: STA=" MACSTR " reason=%hu:%s",
++		MAC2STR(mgmt->sa), reason_code, reason_str);
+ 
+ 	ap_sta_set_authorized(hapd, sta, 0);
+ 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -1147,7 +1147,7 @@ void wpa_supplicant_set_state(struct wpa
+ 	bool update_fils_connect_params = false;
+ #endif /* CONFIG_FILS && IEEE8021X_EAPOL */
+ 
+-	wpa_dbg(wpa_s, MSG_DEBUG, "State: %s -> %s",
++	wpa_dbg(wpa_s, MSG_DEBUG | MSG_LOGFILE, "State: %s -> %s",
+ 		wpa_supplicant_state_txt(wpa_s->wpa_state),
+ 		wpa_supplicant_state_txt(state));
+ 

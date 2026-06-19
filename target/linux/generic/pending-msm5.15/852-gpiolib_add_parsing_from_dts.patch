@@ -1,0 +1,281 @@
+--- a/drivers/gpio/gpiolib.c
++++ b/drivers/gpio/gpiolib.c
+@@ -337,28 +337,28 @@ static struct gpio_desc *gpio_name_to_de
+  *   1. Non-unique names are still accepted,
+  *   2. Name collisions within the same GPIO chip are not reported.
+  */
+-static int gpiochip_set_desc_names(struct gpio_chip *gc)
+-{
+-	struct gpio_device *gdev = gc->gpiodev;
+-	int i;
+-
+-	/* First check all names if they are unique */
+-	for (i = 0; i != gc->ngpio; ++i) {
+-		struct gpio_desc *gpio;
+-
+-		gpio = gpio_name_to_desc(gc->names[i]);
+-		if (gpio)
+-			dev_warn(&gdev->dev,
+-				 "Detected name collision for GPIO name '%s'\n",
+-				 gc->names[i]);
+-	}
+-
+-	/* Then add all names to the GPIO descriptors */
+-	for (i = 0; i != gc->ngpio; ++i)
+-		gdev->descs[i].name = gc->names[i];
+-
+-	return 0;
+-}
++//static int gpiochip_set_desc_names(struct gpio_chip *gc)
++//{
++//	struct gpio_device *gdev = gc->gpiodev;
++//	int i;
++//
++//	/* First check all names if they are unique */
++//	for (i = 0; i != gc->ngpio; ++i) {
++//		struct gpio_desc *gpio;
++//
++//		gpio = gpio_name_to_desc(gc->names[i]);
++//		if (gpio)
++//			dev_warn(&gdev->dev,
++//				 "Detected name collision for GPIO name '%s'\n",
++//				 gc->names[i]);
++//	}
++//
++//	/* Then add all names to the GPIO descriptors */
++//	for (i = 0; i != gc->ngpio; ++i)
++//		gdev->descs[i].name = gc->names[i];
++//
++//	return 0;
++//}
+ 
+ /*
+  * devprop_gpiochip_set_names - Set GPIO line names using device properties
+@@ -369,66 +369,147 @@ static int gpiochip_set_desc_names(struc
+  * names belong to the underlying firmware node and should not be released
+  * by the caller.
+  */
+-static int devprop_gpiochip_set_names(struct gpio_chip *chip)
+-{
+-	struct gpio_device *gdev = chip->gpiodev;
+-	struct fwnode_handle *fwnode = dev_fwnode(&gdev->dev);
+-	const char **names;
+-	int ret, i;
+-	int count;
++//static int devprop_gpiochip_set_names(struct gpio_chip *chip)
++//{
++//	struct gpio_device *gdev = chip->gpiodev;
++//	struct fwnode_handle *fwnode = dev_fwnode(&gdev->dev);
++//	const char **names;
++//	int ret, i;
++//	int count;
++//
++//	count = fwnode_property_string_array_count(fwnode, "gpio-line-names");
++//	if (count < 0)
++//		return 0;
++//
++//	/*
++//	 * When offset is set in the driver side we assume the driver internally
++//	 * is using more than one gpiochip per the same device. We have to stop
++//	 * setting friendly names if the specified ones with 'gpio-line-names'
++//	 * are less than the offset in the device itself. This means all the
++//	 * lines are not present for every single pin within all the internal
++//	 * gpiochips.
++//	 */
++//	if (count <= chip->offset) {
++//		dev_warn(&gdev->dev, "gpio-line-names too short (length %d), cannot map names for the gpiochip at offset %u\n",
++//			 count, chip->offset);
++//		return 0;
++//	}
++//
++//	names = kcalloc(count, sizeof(*names), GFP_KERNEL);
++//	if (!names)
++//		return -ENOMEM;
++//
++//	ret = fwnode_property_read_string_array(fwnode, "gpio-line-names",
++//						names, count);
++//	if (ret < 0) {
++//		dev_warn(&gdev->dev, "failed to read GPIO line names\n");
++//		kfree(names);
++//		return ret;
++//	}
++//
++//	/*
++//	 * When more that one gpiochip per device is used, 'count' can
++//	 * contain at most number gpiochips x chip->ngpio. We have to
++//	 * correctly distribute all defined lines taking into account
++//	 * chip->offset as starting point from where we will assign
++//	 * the names to pins from the 'names' array. Since property
++//	 * 'gpio-line-names' cannot contains gaps, we have to be sure
++//	 * we only assign those pins that really exists since chip->ngpio
++//	 * can be different of the chip->offset.
++//	 */
++//	count = (count > chip->offset) ? count - chip->offset : count;
++//	if (count > chip->ngpio)
++//		count = chip->ngpio;
++//
++//	for (i = 0; i < count; i++)
++//		gdev->descs[i].name = names[chip->offset + i];
++//
++//	kfree(names);
++//
++//	return 0;
++//}
+ 
+-	count = fwnode_property_string_array_count(fwnode, "gpio-line-names");
+-	if (count < 0)
+-		return 0;
++int tlt_gpio_set_line_name(struct gpio_chip *chip, const char *line_name, int index)
++{
++	struct gpio_device *gdev;
+ 
+-	/*
+-	 * When offset is set in the driver side we assume the driver internally
+-	 * is using more than one gpiochip per the same device. We have to stop
+-	 * setting friendly names if the specified ones with 'gpio-line-names'
+-	 * are less than the offset in the device itself. This means all the
+-	 * lines are not present for every single pin within all the internal
+-	 * gpiochips.
+-	 */
+-	if (count <= chip->offset) {
+-		dev_warn(&gdev->dev, "gpio-line-names too short (length %d), cannot map names for the gpiochip at offset %u\n",
+-			 count, chip->offset);
+-		return 0;
++	if (!chip || !line_name) {
++		return 1;
+ 	}
+ 
+-	names = kcalloc(count, sizeof(*names), GFP_KERNEL);
+-	if (!names)
+-		return -ENOMEM;
++	gdev = chip->gpiodev;
++	if (gdev->ngpio < index) {
++		return 1;
++	}
+ 
+-	ret = fwnode_property_read_string_array(fwnode, "gpio-line-names",
+-						names, count);
+-	if (ret < 0) {
+-		dev_warn(&gdev->dev, "failed to read GPIO line names\n");
+-		kfree(names);
+-		return ret;
++	if (gdev->descs[index].name) {
++		return 1;
+ 	}
++	gdev->descs[index].name = line_name;
+ 
+-	/*
+-	 * When more that one gpiochip per device is used, 'count' can
+-	 * contain at most number gpiochips x chip->ngpio. We have to
+-	 * correctly distribute all defined lines taking into account
+-	 * chip->offset as starting point from where we will assign
+-	 * the names to pins from the 'names' array. Since property
+-	 * 'gpio-line-names' cannot contains gaps, we have to be sure
+-	 * we only assign those pins that really exists since chip->ngpio
+-	 * can be different of the chip->offset.
+-	 */
+-	count = (count > chip->offset) ? count - chip->offset : count;
+-	if (count > chip->ngpio)
+-		count = chip->ngpio;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(tlt_gpio_set_line_name);
++
++int tlt_gpio_set_active_low(struct gpio_chip *chip, int index)
++{
++	struct gpio_device *gdev;
+ 
+-	for (i = 0; i < count; i++)
+-		gdev->descs[i].name = names[chip->offset + i];
++	if (!chip) {
++		return 1;
++	}
+ 
+-	kfree(names);
++	gdev = chip->gpiodev;
++	if (gdev->ngpio < index) {
++		return 1;
++	}
++	set_bit(FLAG_ACTIVE_LOW, &gdev->descs[index].flags);
+ 
+ 	return 0;
+ }
+ 
++EXPORT_SYMBOL_GPL(tlt_gpio_set_active_low);
++
++struct gpio_chip *gpiochip_find_by_id(int id)
++{
++	struct gpio_device *gdev;
++	struct gpio_chip *chip = NULL;
++	unsigned long flags;
++
++	spin_lock_irqsave(&gpio_lock, flags);
++	list_for_each_entry(gdev, &gpio_devices, list){
++		if (gdev->id == id) {
++			chip = gdev->chip;
++			break;
++		}
++	}
++
++	spin_unlock_irqrestore(&gpio_lock, flags);
++
++	return chip;
++}
++EXPORT_SYMBOL_GPL(gpiochip_find_by_id);
++
++
++int tlt_gpio_get_line_by_name(struct gpio_chip *chip, const char *line_name)
++{
++	struct gpio_device *gdev;
++	int i;
++
++	if (!chip || !line_name) {
++		return -1;
++	}
++
++	gdev = chip->gpiodev;
++	for (i = 0; i < gdev->ngpio; i++) {
++		if (gdev->descs[i].name && !strcmp(gdev->descs[i].name, line_name)) {
++			return i;
++		}
++	}
++	return -1;
++}
++EXPORT_SYMBOL_GPL(tlt_gpio_get_line_by_name);
++
+ static unsigned long *gpiochip_allocate_mask(struct gpio_chip *gc)
+ {
+ 	unsigned long *p;
+@@ -732,12 +813,13 @@ int gpiochip_add_data_with_key(struct gp
+ 	INIT_LIST_HEAD(&gdev->pin_ranges);
+ #endif
+ 
+-	if (gc->names)
+-		ret = gpiochip_set_desc_names(gc);
+-	else
+-		ret = devprop_gpiochip_set_names(gc);
+-	if (ret)
+-		goto err_remove_from_list;
++	/* Names are set by tlt-gpio kmod */
++//	if (gc->names)
++//		ret = gpiochip_set_desc_names(gc);
++//	else
++//		ret = devprop_gpiochip_set_names(gc);
++//	if (ret)
++//		goto err_remove_from_list;
+ 
+ 	ret = gpiochip_alloc_valid_mask(gc);
+ 	if (ret)
+--- a/include/linux/gpio/driver.h
++++ b/include/linux/gpio/driver.h
+@@ -746,4 +746,10 @@ static inline void gpiochip_unlock_as_ir
+ }
+ #endif /* CONFIG_GPIOLIB */
+ 
++struct gpio_desc *gpiochip_get_desc(struct gpio_chip *gc, unsigned int hwnum);
++int tlt_gpio_set_line_name(struct gpio_chip *chip, const char *line_name, int index);
++int tlt_gpio_set_active_low(struct gpio_chip *chip, int index);
++struct gpio_chip *gpiochip_find_by_id(int id);
++int tlt_gpio_get_line_by_name(struct gpio_chip *chip, const char *line_name);
++
+ #endif /* __LINUX_GPIO_DRIVER_H */

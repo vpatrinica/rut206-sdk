@@ -1,0 +1,1146 @@
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.builds/freebsd.yml src/.builds/freebsd.yml
+--- upstream/.builds/freebsd.yml	2020-10-27 08:39:57.000000000 +0000
++++ src/.builds/freebsd.yml	1970-01-01 00:00:00.000000000 +0000
+@@ -1,16 +0,0 @@
+----
+-# build manifest for SourceHut
+-# https://man.sr.ht/builds.sr.ht/
+-image: freebsd/latest
+-packages:
+-- autoconf
+-- libtool
+-- automake
+-sources:
+-- https://git.sr.ht/~kravietz/pam-tacplus
+-tasks:
+-- configure: |
+-        cd pam-tacplus
+-        autoreconf -i
+-        ./configure
+-        make
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.builds/ubuntu.yml src/.builds/ubuntu.yml
+--- upstream/.builds/ubuntu.yml	2020-10-27 08:39:57.000000000 +0000
++++ src/.builds/ubuntu.yml	1970-01-01 00:00:00.000000000 +0000
+@@ -1,20 +0,0 @@
+----
+-# build manifest for SourceHut
+-# https://man.sr.ht/builds.sr.ht/
+-image: ubuntu/lts
+-packages:
+-- libpam-tacplus
+-- autoconf
+-- build-essential
+-- libtool
+-- automake
+-- libpam-dev
+-- libssl-dev
+-sources:
+-- https://git.sr.ht/~kravietz/pam-tacplus
+-tasks:
+-- configure: |
+-        cd pam-tacplus
+-        autoreconf -i
+-        ./configure
+-        make
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.github/FUNDING.yml src/.github/FUNDING.yml
+--- upstream/.github/FUNDING.yml	2020-10-27 08:39:57.000000000 +0000
++++ src/.github/FUNDING.yml	1970-01-01 00:00:00.000000000 +0000
+@@ -1,12 +0,0 @@
+-# These are supported funding model platforms
+-
+-github: # Replace with up to 4 GitHub Sponsors-enabled usernames e.g., [user1, user2]
+-patreon: # Replace with a single Patreon username
+-open_collective: # Replace with a single Open Collective username
+-ko_fi: # Replace with a single Ko-fi username
+-tidelift: # Replace with a single Tidelift platform-name/package-name e.g., npm/babel
+-community_bridge: # Replace with a single Community Bridge project-name e.g., cloud-foundry
+-liberapay: webcookies
+-issuehunt: # Replace with a single IssueHunt username
+-otechie: # Replace with a single Otechie username
+-custom: 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.github/workflows/codeql-analysis.yml src/.github/workflows/codeql-analysis.yml
+--- upstream/.github/workflows/codeql-analysis.yml	2020-10-27 08:39:57.000000000 +0000
++++ src/.github/workflows/codeql-analysis.yml	1970-01-01 00:00:00.000000000 +0000
+@@ -1,64 +0,0 @@
+-name: "CodeQL"
+-
+-on:
+-  push:
+-    branches: [master]
+-  pull_request:
+-    # The branches below must be a subset of the branches above
+-    branches: [master]
+-  schedule:
+-    - cron: '0 3 * * 1'
+-
+-jobs:
+-  analyze:
+-    name: Analyze
+-    runs-on: ubuntu-latest
+-
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        # Override automatic language detection by changing the below list
+-        # Supported options are ['csharp', 'cpp', 'go', 'java', 'javascript', 'python']
+-        language: ['cpp']
+-        # Learn more...
+-        # https://docs.github.com/en/github/finding-security-vulnerabilities-and-errors-in-your-code/configuring-code-scanning#overriding-automatic-language-detection
+-
+-    steps:
+-    - name: Checkout repository
+-      uses: actions/checkout@v2
+-      with:
+-        # We must fetch at least the immediate parents so that if this is
+-        # a pull request then we can checkout the head.
+-        fetch-depth: 2
+-
+-    # If this run was triggered by a pull request event, then checkout
+-    # the head of the pull request instead of the merge commit.
+-    - run: git checkout HEAD^2
+-      if: ${{ github.event_name == 'pull_request' }}
+-
+-    # Initializes the CodeQL tools for scanning.
+-    - name: Initialize CodeQL
+-      uses: github/codeql-action/init@v1
+-      with:
+-        languages: ${{ matrix.language }}
+-
+-    # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
+-    # If this step fails, then you should remove it and run the build manually (see below)
+-    #- name: Autobuild
+-    #  uses: github/codeql-action/autobuild@v1
+-
+-    # ℹ️ Command-line programs to run using the OS shell.
+-    # 📚 https://git.io/JvXDl
+-
+-    # ✏️ If the Autobuild fails above, remove it and uncomment the following three lines
+-    #    and modify them (or add more) to build your code if your project
+-    #    uses a compiled language
+-
+-    - run: |
+-       autoreconf -f -v -i
+-       sudo apt install -y libpam-dev libssl-dev
+-       ./configure
+-       make
+-
+-    - name: Perform CodeQL Analysis
+-      uses: github/codeql-action/analyze@v1
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.gitignore src/.gitignore
+--- upstream/.gitignore	2020-10-27 08:39:57.000000000 +0000
++++ src/.gitignore	1970-01-01 00:00:00.000000000 +0000
+@@ -1,32 +0,0 @@
+-Makefile.in
+-aclocal.m4
+-autom4te.cache/
+-config.h.in
+-config/compile
+-config/config.guess
+-config/config.sub
+-config/depcomp
+-config/install-sh
+-config/ltmain.sh
+-config/missing
+-configure
+-config/*.m4
+-.deps/
+-.libs/
+-Makefile
+-config.h
+-config.log
+-config.status
+-libtool
+-pam_tacplus.spec
+-stamp-h1
+-*.o
+-*.lo
+-*.la
+-*.c.swp
+-*.h.swp
+-.autotools
+-.cproject
+-.project
+-.settings/
+-cov-int/
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.gitlab-ci.yml src/.gitlab-ci.yml
+--- upstream/.gitlab-ci.yml	1970-01-01 00:00:00.000000000 +0000
++++ src/.gitlab-ci.yml	2026-01-14 12:01:11.000000000 +0000
+@@ -0,0 +1,20 @@
++include:
++  - project: teltonika/ci-templates
++    file:
++      - /templates/semgrep.yml
++
++workflow:
++  rules:
++    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
++    - if: $CI_PIPELINE_SOURCE == "web"
++    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
++      when: never
++    - if: $CI_COMMIT_BRANCH
++
++semgrep_errors:
++  extends: .semgrep_errors
++
++semgrep_info:
++  extends: .semgrep_info
++  needs:
++    - job: semgrep_errors
+\ No newline at end of file
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/.travis.yml src/.travis.yml
+--- upstream/.travis.yml	2020-10-27 08:39:57.000000000 +0000
++++ src/.travis.yml	1970-01-01 00:00:00.000000000 +0000
+@@ -1,28 +0,0 @@
+----
+-language: c
+-dist: bionic
+-cache:
+-  directories:
+-    - config
+-compiler:
+-  - gcc
+-  - clang
+-before_install:
+-  - sudo apt-get install -y pamtester tacacs+ expect
+-  - env TACC=yes autoreconf -iv
+-script: ./configure --libdir=/lib && make && make test
+-addons:
+-  apt:
+-    update: true
+-  coverity_scan:
+-    project:
+-      name: kravietz/pam_tacplus
+-      version: 1.5.0-pre
+-      description: Travic-CI scan
+-    notification_email: pawel.krawczyk@hush.com
+-    build_command_prepend: ./configure --libdir=/lib
+-    build_command: make
+-    branch_pattern: coverity_scan
+-env:
+-  global:
+-    secure: EQkiZmA76dy+HEDY+x76DGDs65Pr33Dgt+k4G5p75vIFVSZoN2s4s/6gvaofRYrqbiC7XqxmeOIx7BXXo2OJVbKRAMVU5iBux4IYDZ++Oe8a4p06qeRXytbLIS20YwmeqhkgEik5o25lL2gH1V5gdlPWwnFcx8h1/ExuD5ow/jubfNrrahekzPcRBZjZk9JDOBDtt8eDF2PQsuyH3VFMyqPjdt5qJPKVcZ29QL9eAWuF/5ctZ0zPvY3Jd+jBSXhRjwoPK8L6PRFkjT3gG8ucUBm+tX0hxB1IUkWvnH8WpgvFT4cMgquqAG5Fq98BigZVGnvo31fVbe/6g/PZzUJdXe3/zfVAfj1spdIGJnIQDcpdLrQiAywkQlZ/n6GSVuh6lHMj8B9YeEg2qyFZ6moCoYsOpmN5sz6e1xFmw4oDT8x5c5XmK1+VJQ3EKLiJbM06/9hYCELtMDvlmWsoq3qa3Y6218Gnult+u+iwHtPEl320h07KDC0rO/jC7dniN9cZ1paFKYV3YjaB/bbacHMjEUo802oxcu2Btqa8ciX4jbkOAn2FbtDcfzzjrv39mEshqALkb0acY6EWVDpLxUWcZbXJ/yISdael6ZTmYcXpV8Ec5kYSwFsSmRh3xSdhPz4pkGnz4csU4dBhJaTnj1uVJlH2/3JdoAYjtMtzZPypMZM=
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/SECURITY.md src/SECURITY.md
+--- upstream/SECURITY.md	1970-01-01 00:00:00.000000000 +0000
++++ src/SECURITY.md	2026-01-14 12:01:11.000000000 +0000
+@@ -0,0 +1,12 @@
++# Security Policy
++
++## Supported Versions
++
++All versions are supported.
++
++## Reporting a Vulnerability
++
++For low and medium level vulnerabilities please [create an issue](https://github.com/kravietz/pam_tacplus/issues/new)
++or [pull request](https://github.com/kravietz/pam_tacplus/pulls) with fixes.
++
++For high severity issues please [contact Paweł Krawczyk](https://krvtz.net/pages/contact.html), numerous secure means of communication are supported.
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/configure.ac src/configure.ac
+--- upstream/configure.ac	2020-10-27 08:39:57.000000000 +0000
++++ src/configure.ac	2026-01-14 12:01:11.000000000 +0000
+@@ -37,7 +37,7 @@
+ dnl Checks for libraries.
+ AC_CHECK_LIB(pam, pam_start)
+ AC_CHECK_LIB(tac, tac_connect)
+-AC_CHECK_LIB(crypto, MD5_Init)
++AC_CHECK_LIB(crypto, EVP_DigestInit_ex)
+ AC_CHECK_LIB(crypto, RAND_pseudo_bytes,
+             [AC_DEFINE([HAVE_RAND_PSEUDO_BYTES], [1], [Define to 1 if you have the `RAND_pseudo_bytes' function.])])
+ AC_CHECK_LIB(crypto, RAND_bytes,
+@@ -45,6 +45,10 @@
+ AC_CHECK_LIB(c, pututxline,
+ 	     [AC_DEFINE([HAVE_PUTUTXLINE], [1], [Define to 1 if you have the `pututxline' function.])],
+ 	     [AC_CHECK_LIB(util, logwtmp)])
++AC_CHECK_LIB(tlt_logger, logger_init,
++             [AC_DEFINE([HAVE_LIBTLT], [1], [Define to 1 if you have the tlt logger library.])
++              LIBS="$LIBS -ltlt_logger"],
++             [AC_MSG_WARN([libtlt-logger not found, tlt-logging will be disabled])])
+ 
+ case "$host" in
+ 	sparc-* | sparc64-*)
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libtac/include/libtac.h src/libtac/include/libtac.h
+--- upstream/libtac/include/libtac.h	2020-10-27 08:39:57.000000000 +0000
++++ src/libtac/include/libtac.h	2026-01-14 12:01:11.000000000 +0000
+@@ -62,18 +62,18 @@
+ 
+ #if defined(DEBUGTAC) && !defined(TACDEBUG)
+ # ifdef __GNUC__
+-#define TACDEBUG(level, fmt, ...) syslog(level, fmt, ## __VA_ARGS__)
++#define TACDEBUG(level, fmt, ...) _log(level, fmt, ## __VA_ARGS__)
+ # else
+-#define TACDEBUG(level, fmt, ...) syslog(level, fmt, __VA_ARGS__)
++#define TACDEBUG(level, fmt, ...) _log(level, fmt, __VA_ARGS__)
+ # endif
+ #else
+ #define TACDEBUG(level, fmt, ...) (void)0
+ #endif
+ 
+ #ifdef __GNUC__
+-#define TACSYSLOG(level, fmt, ...) syslog(level, fmt, ## __VA_ARGS__)
++#define TACSYSLOG(level, fmt, ...) _log(level, fmt, ## __VA_ARGS__)
+ #else
+-#define TACSYSLOG(level, fmt, ...) syslog(level, fmt, __VA_ARGS__)
++#define TACSYSLOG(level, fmt, ...) _log(level, fmt, __VA_ARGS__)
+ #endif
+ 
+ #if defined(TACDEBUG_AT_RUNTIME)
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libtac/lib/authen_s.c src/libtac/lib/authen_s.c
+--- upstream/libtac/lib/authen_s.c	2020-10-27 08:39:57.000000000 +0000
++++ src/libtac/lib/authen_s.c	2026-01-14 12:01:11.000000000 +0000
+@@ -27,6 +27,8 @@
+ #include "xalloc.h"
+ 
+ #if defined(HAVE_OPENSSL_MD5_H) && defined(HAVE_LIBCRYPTO)
++# define MD5_LEN 16
++# include <openssl/evp.h>
+ # include <openssl/md5.h>
+ #else
+ # include "md5.h"
+@@ -34,10 +36,22 @@
+ 
+ /* assume digest points to a buffer MD5_LEN size */
+ static void
+-digest_chap(unsigned char digest[MD5_LBLOCK], uint8_t id,
++digest_chap(unsigned char digest[MD5_LEN], uint8_t id,
+             const char *pass, unsigned pass_len,
+             const char *chal, unsigned chal_len) {
+ 
++#if defined(HAVE_OPENSSL_MD5_H) && defined(HAVE_LIBCRYPTO)
++	EVP_MD_CTX *ctx = EVP_MD_CTX_new();
++	EVP_MD_CTX_init(ctx);
++	EVP_DigestInit_ex(ctx, EVP_md5(), NULL);
++
++	EVP_DigestUpdate(ctx, &id, sizeof(id));
++	EVP_DigestUpdate(ctx, (const unsigned char *)pass, pass_len);
++	EVP_DigestUpdate(ctx, (const unsigned char *)chal, chal_len);
++
++	EVP_DigestFinal_ex(ctx, digest, NULL);
++	EVP_MD_CTX_free(ctx);
++#else
+     MD5_CTX mdcontext;
+ 
+     MD5_Init(&mdcontext);
+@@ -49,6 +63,7 @@
+     MD5_Update(&mdcontext, (const unsigned char *)pass, pass_len);
+     MD5_Update(&mdcontext, (const unsigned char *)chal, chal_len);
+     MD5_Final(digest, &mdcontext);
++#endif
+ }
+ 
+ /* this function sends a packet do TACACS+ server, asking
+@@ -99,7 +114,7 @@
+ 	r_addr_len = strlen(r_addr);
+ 
+ 	if (!strcmp(tac_login, "chap")) {
+-		unsigned char digest[MD5_LBLOCK];
++		unsigned char digest[MD5_LEN];
+ 
+ 		digest_chap(digest, id, pass, pass_len, chal, chal_len);
+ 
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libtac/lib/cont_s.c src/libtac/lib/cont_s.c
+--- upstream/libtac/lib/cont_s.c	2020-10-27 08:39:57.000000000 +0000
++++ src/libtac/lib/cont_s.c	2026-01-14 12:01:11.000000000 +0000
+@@ -20,6 +20,8 @@
+ 
+ #include "libtac.h"
+ #if defined(HAVE_OPENSSL_MD5_H) && defined(HAVE_LIBCRYPTO)
++# define MD5_LEN 16
++# include <openssl/evp.h>
+ # include <openssl/md5.h>
+ #else
+ # include "md5.h"
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libtac/lib/crypt.c src/libtac/lib/crypt.c
+--- upstream/libtac/lib/crypt.c	2020-10-27 08:39:57.000000000 +0000
++++ src/libtac/lib/crypt.c	2026-01-14 12:01:11.000000000 +0000
+@@ -27,6 +27,8 @@
+ #endif
+ 
+ #if defined(HAVE_OPENSSL_MD5_H) && defined(HAVE_LIBCRYPTO)
++# define MD5_LEN 16
++# include <openssl/evp.h>
+ # include <openssl/md5.h>
+ #else
+ # include "md5.h"
+@@ -38,6 +40,24 @@
+ static void _tac_md5_pad(const HDR *hdr,
+         unsigned char *new_digest, unsigned char *old_digest)  {
+     unsigned tac_secret_len = strlen(tac_secret);
++
++#if defined(HAVE_OPENSSL_MD5_H) && defined(HAVE_LIBCRYPTO)
++    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
++    EVP_MD_CTX_init(ctx);
++    EVP_DigestInit_ex(ctx, EVP_md5(), NULL);
++
++    EVP_DigestUpdate(ctx, (const unsigned char *) &hdr->session_id, sizeof(hdr->session_id));
++    EVP_DigestUpdate(ctx, (const unsigned char *) tac_secret, tac_secret_len);
++    EVP_DigestUpdate(ctx, &hdr->version, sizeof(hdr->version));
++    EVP_DigestUpdate(ctx, &hdr->seq_no, sizeof(hdr->seq_no));
++
++    if (old_digest) {
++        EVP_DigestUpdate(ctx, old_digest, MD5_LEN);
++    }
++
++    EVP_DigestFinal_ex(ctx, new_digest, NULL);
++    EVP_MD_CTX_free(ctx);
++#else
+     MD5_CTX mdcontext;
+ 
+     /* MD5_1 = MD5{session_id, secret, version, seq_no}
+@@ -52,10 +72,11 @@
+ 
+     /* append previous pad if this is not the first run */
+     if (old_digest) {
+-        MD5_Update(&mdcontext, old_digest, MD5_LBLOCK);
++        MD5_Update(&mdcontext, old_digest, MD5_LEN);
+     }
+ 
+     MD5_Final(new_digest, &mdcontext);
++#endif
+  
+ }    /* _tac_md5_pad */
+ 
+@@ -67,10 +88,10 @@
+  
+     /* null operation if no encryption requested */
+     if((tac_secret != NULL) && (th->encryption & TAC_PLUS_UNENCRYPTED_FLAG) != TAC_PLUS_UNENCRYPTED_FLAG) {
+-        unsigned char digest[MD5_LBLOCK];
++        unsigned char digest[MD5_LEN];
+  
+         for (i=0; i<length; i++) {
+-            j = i % MD5_LBLOCK;
++            j = i % MD5_LEN;
+ 
+             /* At the beginning of every block (16 bytes, i.e. the size
+              * of an MD5 digest), generate a new pad to XOR against.
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/libtac/lib/md5.h src/libtac/lib/md5.h
+--- upstream/libtac/lib/md5.h	2020-10-27 08:39:57.000000000 +0000
++++ src/libtac/lib/md5.h	2026-01-14 12:01:11.000000000 +0000
+@@ -46,7 +46,5 @@
+ #define MD5_Update MD5Update
+ #define MD5_Final MD5Final
+ 
+-#define MD5_LBLOCK	MD5_LEN
+-
+ #define __MD5_INCLUDE__
+ #endif /* __MD5_INCLUDE__ */
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/pam_tacplus.c src/pam_tacplus.c
+--- upstream/pam_tacplus.c	2020-10-27 08:39:57.000000000 +0000
++++ src/pam_tacplus.c	2026-01-14 12:01:11.000000000 +0000
+@@ -36,6 +36,7 @@
+ #include <time.h>
+ #include <unistd.h>
+ #include <strings.h>
++#include <tlt_logger.h>
+ 
+ #ifdef HAVE_CONFIG_H
+ #include "config.h"
+@@ -56,6 +57,7 @@
+ 
+ /* accounting task identifier */
+ static short int task_id = 0;
++//dummy commit
+ 
+ /* copy a server's information into active_server */
+ static void set_active_server (const tacplus_server_t *tac_svr)
+@@ -74,7 +76,7 @@
+ 	tac_copy_addr_info (&active_addrinfo, tac_svr->addr);
+ 	strncpy (active_key, tac_svr->key ? tac_svr->key : "", TAC_SECRET_MAX_LEN-1);
+ 	active_server.addr = &active_addrinfo;
+-    syslog(LOG_DEBUG, "%s: active server set as [%s]", __FUNCTION__,
++    _pam_log(LOG_DEBUG, "%s: active server set as [%s]", __FUNCTION__,
+ 				tac_ntop(active_server.addr->ai_addr));
+ 	active_server.key = active_key;
+ }
+@@ -162,27 +164,27 @@
+ 	ctrl = _pam_parse(argc, argv);
+ 
+ 	if (ctrl & PAM_TAC_DEBUG) {
+-		syslog(LOG_DEBUG, "%s: [%s] called (pam_tacplus v%u.%u.%u)",
++		_pam_log(LOG_DEBUG, "%s: [%s] called (pam_tacplus v%u.%u.%u)",
+ 				__FUNCTION__, typemsg, PAM_TAC_VMAJ, PAM_TAC_VMIN,
+ 				PAM_TAC_VPAT);
+-		syslog(LOG_DEBUG, "%s: tac_srv_no=%d", __FUNCTION__, tac_srv_no);
++		_pam_log(LOG_DEBUG, "%s: tac_srv_no=%d", __FUNCTION__, tac_srv_no);
+ 	}
+ 
+ 	if ((user = _pam_get_user(pamh)) == NULL)
+ 		return PAM_USER_UNKNOWN;
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: username [%s] obtained", __FUNCTION__, user);
++		_pam_log(LOG_DEBUG, "%s: username [%s] obtained", __FUNCTION__, user);
+ 
+ 	tty = _pam_get_terminal(pamh);
+ 	if (!strncmp(tty, "/dev/", 5))
+ 		tty += 5;
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: tty [%s] obtained", __FUNCTION__, tty);
++		_pam_log(LOG_DEBUG, "%s: tty [%s] obtained", __FUNCTION__, tty);
+ 
+ 	r_addr = _pam_get_rhost(pamh);
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: rhost [%s] obtained", __FUNCTION__, r_addr);
++		_pam_log(LOG_DEBUG, "%s: rhost [%s] obtained", __FUNCTION__, r_addr);
+ 
+ 	/* checks for specific data required by TACACS+, which should
+ 	 be supplied in command line  */
+@@ -216,7 +218,7 @@
+ 			continue;
+ 		}
+ 		if (ctrl & PAM_TAC_DEBUG)
+-			syslog(LOG_DEBUG, "%s: connected with fd=%d (srv %lu)", __FUNCTION__,
++			_pam_log(LOG_DEBUG, "%s: connected with fd=%d (srv %lu)", __FUNCTION__,
+ 					tac_fd, srv_i);
+ 
+ 		retval = _pam_send_account(tac_fd, type, user, tty, r_addr, cmd);
+@@ -226,7 +228,7 @@
+ 		} else {
+ 			status = PAM_SUCCESS;
+ 			if (ctrl & PAM_TAC_DEBUG)
+-				syslog(LOG_DEBUG, "%s: [%s] for [%s] sent", __FUNCTION__,
++				_pam_log(LOG_DEBUG, "%s: [%s] for [%s] sent", __FUNCTION__,
+ 						typemsg, user);
+ 		}
+ 		close(tac_fd);
+@@ -268,14 +270,14 @@
+ 	ctrl = _pam_parse(argc, argv);
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
++		_pam_log(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
+ 				PAM_TAC_VMAJ, PAM_TAC_VMIN, PAM_TAC_VPAT);
+ 
+ 	if ((user = _pam_get_user(pamh)) == NULL)
+ 		return PAM_USER_UNKNOWN;
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: user [%s] obtained", __FUNCTION__, user);
++		_pam_log(LOG_DEBUG, "%s: user [%s] obtained", __FUNCTION__, user);
+ 
+ 	retval = tacacs_get_password(pamh, flags, ctrl, &pass);
+ 	if (retval != PAM_SUCCESS || pass == NULL || *pass == '\0') {
+@@ -292,22 +294,22 @@
+ 	}
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: password obtained", __FUNCTION__);
++		_pam_log(LOG_DEBUG, "%s: password obtained", __FUNCTION__);
+ 
+ 	tty = _pam_get_terminal(pamh);
+ 	if (!strncmp(tty, "/dev/", 5))
+ 		tty += 5;
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: tty [%s] obtained", __FUNCTION__, tty);
++		_pam_log(LOG_DEBUG, "%s: tty [%s] obtained", __FUNCTION__, tty);
+ 
+ 	r_addr = _pam_get_rhost(pamh);
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: rhost [%s] obtained", __FUNCTION__, r_addr);
++		_pam_log(LOG_DEBUG, "%s: rhost [%s] obtained", __FUNCTION__, r_addr);
+ 
+ 	status = PAM_AUTHINFO_UNAVAIL;
+ 	for (srv_i = 0; srv_i < tac_srv_no; srv_i++) {
+ 		if (ctrl & PAM_TAC_DEBUG)
+-			syslog(LOG_DEBUG, "%s: trying srv %lu", __FUNCTION__, srv_i);
++			_pam_log(LOG_DEBUG, "%s: trying srv %lu", __FUNCTION__, srv_i);
+ 
+ 		tac_fd = tac_connect_single(tac_srv[srv_i].addr, tac_srv[srv_i].key,
+ 				NULL, tac_timeout);
+@@ -341,7 +343,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_PASS:
+ 				/* success */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_PASS");
+ 
+ 				if (NULL != conv_msg.msg) {
+@@ -349,7 +351,7 @@
+ 					retval = converse(pamh, 1, &conv_msg, &resp);
+ 					if (PAM_SUCCESS == retval) {
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
++							_pam_log(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
+ 					} else {
+ 						_pam_log(LOG_WARNING,
+ 								"%s: error sending msg=\"%s\", retval=%d",
+@@ -362,13 +364,13 @@
+ 				set_active_server(&tac_srv[srv_i]);
+ 
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG, "%s: active srv %lu", __FUNCTION__, srv_i);
++					_pam_log(LOG_DEBUG, "%s: active srv %lu", __FUNCTION__, srv_i);
+ 
+ 				break;
+ 
+ 			case TAC_PLUS_AUTHEN_STATUS_FAIL:
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_FAIL");
+ 
+ 				if (NULL != conv_msg.msg) {
+@@ -376,7 +378,7 @@
+ 					retval = converse(pamh, 1, &conv_msg, &resp);
+ 					if (PAM_SUCCESS == retval) {
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
++							_pam_log(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
+ 					} else {
+ 						_pam_log(LOG_WARNING,
+ 								"%s: error sending msg=\"%s\", retval=%d",
+@@ -393,7 +395,7 @@
+ 
+ 			case TAC_PLUS_AUTHEN_STATUS_GETDATA:
+ 				if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_GETDATA");
+ 
+ 				if (NULL != conv_msg.msg) {
+@@ -404,11 +406,11 @@
+ 					retval = converse(pamh, 1, &conv_msg, &resp);
+ 					if (PAM_SUCCESS == retval) {
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "sent msg=\"%s\", resp=\"%s\"",
++							_pam_log(LOG_DEBUG, "sent msg=\"%s\", resp=\"%s\"",
+ 									conv_msg.msg, resp->resp);
+ 
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "%s: calling tac_cont_send",
++							_pam_log(LOG_DEBUG, "%s: calling tac_cont_send",
+ 									__FUNCTION__);
+ 
+ 						if (0
+@@ -428,7 +430,7 @@
+ 						communicating = 0;
+ 					}
+ 				} else {
+-					syslog(LOG_ERR,
++					_pam_log(LOG_ERR,
+ 							"GETDATA response with no message, returning PAM_AUTH_ERR");
+ 
+ 					status = PAM_AUTH_ERR;
+@@ -440,7 +442,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_GETUSER:
+ 				/* not implemented */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_GETUSER");
+ 
+ 				communicating = 0;
+@@ -448,11 +450,11 @@
+ 
+ 			case TAC_PLUS_AUTHEN_STATUS_GETPASS:
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_GETPASS");
+ 
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG, "%s: tac_cont_send called", __FUNCTION__);
++					_pam_log(LOG_DEBUG, "%s: tac_cont_send called", __FUNCTION__);
+ 
+ 				if (tac_cont_send(tac_fd, pass) < 0) {
+ 					_pam_log(LOG_ERR,
+@@ -465,7 +467,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_RESTART:
+ 				/* try it again */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_RESTART");
+ 
+ 				/*
+@@ -479,7 +481,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_ERROR:
+ 				/* server has problems */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_ERROR");
+ 
+ 				communicating = 0;
+@@ -489,7 +491,7 @@
+ 				/* server tells to try a different server address */
+ 				/* not implemented */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_FOLLOW");
+ 
+ 				communicating = 0;
+@@ -500,7 +502,7 @@
+ 					/* connection error */
+ 					communicating = 0;
+ 					if (ctrl & PAM_TAC_DEBUG)
+-						syslog(LOG_DEBUG,
++						_pam_log(LOG_DEBUG,
+ 								"error communicating with tacacs server");
+ 					break;
+ 				}
+@@ -508,7 +510,7 @@
+ 				/* unknown response code */
+ 				communicating = 0;
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG, "tacacs status: unknown response 0x%02x",
++					_pam_log(LOG_DEBUG, "tacacs status: unknown response 0x%02x",
+ 							msg);
+ 			}
+ 
+@@ -529,7 +531,7 @@
+ 		_pam_log(LOG_ERR, "no more servers to connect");
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: exit with pam status: %d", __FUNCTION__, status);
++		_pam_log(LOG_DEBUG, "%s: exit with pam status: %d", __FUNCTION__, status);
+ 
+ 	if (NULL != pass) {
+ 		bzero(pass, strlen(pass));
+@@ -547,7 +549,7 @@
+ 	int ctrl = _pam_parse(argc, argv);
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
++		_pam_log(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
+ 				PAM_TAC_VMAJ, PAM_TAC_VMIN, PAM_TAC_VPAT);
+ 
+ 	return PAM_SUCCESS;
+@@ -580,24 +582,24 @@
+ 	ctrl = _pam_parse(argc, argv);
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
++		_pam_log(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
+ 				PAM_TAC_VMAJ, PAM_TAC_VMIN, PAM_TAC_VPAT);
+ 
+ 	if ((user = _pam_get_user(pamh)) == NULL)
+ 		return PAM_USER_UNKNOWN;
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: username obtained [%s]", __FUNCTION__, user);
++		_pam_log(LOG_DEBUG, "%s: username obtained [%s]", __FUNCTION__, user);
+ 
+ 	tty = _pam_get_terminal(pamh);
+ 	if (!strncmp(tty, "/dev/", 5))
+ 		tty += 5;
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: tty obtained [%s]", __FUNCTION__, tty);
++		_pam_log(LOG_DEBUG, "%s: tty obtained [%s]", __FUNCTION__, tty);
+ 
+ 	r_addr = _pam_get_rhost(pamh);
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: rhost obtained [%s]", __FUNCTION__, r_addr);
++		_pam_log(LOG_DEBUG, "%s: rhost obtained [%s]", __FUNCTION__, r_addr);
+ 
+ 	/* checks if user has been successfully authenticated
+ 	 by TACACS+; we cannot solely authorize user if it hasn't
+@@ -608,7 +610,7 @@
+ 		return PAM_AUTH_ERR;
+ 	}
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: active server is [%s]", __FUNCTION__,
++		_pam_log(LOG_DEBUG, "%s: active server is [%s]", __FUNCTION__,
+ 				tac_ntop(active_server.addr->ai_addr));
+ 
+ 	/* checks for specific data required by TACACS+, which should
+@@ -644,7 +646,7 @@
+ 	}
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: sent authorization request", __FUNCTION__);
++		_pam_log(LOG_DEBUG, "%s: sent authorization request", __FUNCTION__);
+ 
+ 	tac_author_read(tac_fd, &arep);
+ 
+@@ -660,7 +662,7 @@
+ 	}
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: user [%s] successfully authorized", __FUNCTION__,
++		_pam_log(LOG_DEBUG, "%s: user [%s] successfully authorized", __FUNCTION__,
+ 				user);
+ 
+ 	status = PAM_SUCCESS;
+@@ -673,7 +675,7 @@
+ 			bcopy(attr->attr, avpair, attr->attr_len+1); /* Also copy terminating NUL */
+ 
+ 			if (ctrl & PAM_TAC_DEBUG)
+-				syslog(LOG_DEBUG, "%s: returned attribute `%s' from server",
++				_pam_log(LOG_DEBUG, "%s: returned attribute `%s' from server",
+ 						__FUNCTION__, avpair);
+ 
+ 			avpair[len] = '='; // replace '*' by '='
+@@ -685,16 +687,16 @@
+ 			}
+ 
+ 			if (ctrl & PAM_TAC_DEBUG)
+-				syslog(LOG_DEBUG, "%s: setting PAM environment `%s'",
++				_pam_log(LOG_DEBUG, "%s: setting PAM environment `%s'",
+ 						__FUNCTION__, avpair);
+ 
+ 			/* make returned attributes available for other PAM modules via PAM environment */
+ 			if (pam_putenv(pamh, avpair) != PAM_SUCCESS)
+-				syslog(LOG_WARNING, "%s: unable to set PAM environment",
++				_pam_log(LOG_WARNING, "%s: unable to set PAM environment",
+ 						__FUNCTION__);
+ 
+ 		} else {
+-			syslog(LOG_WARNING, "%s: invalid attribute `%s', no separator",
++			_pam_log(LOG_WARNING, "%s: invalid attribute `%s', no separator",
+ 					__FUNCTION__, attr->attr);
+ 		}
+ 		attr = attr->next;
+@@ -739,7 +741,7 @@
+ #endif
+ 
+ 	if (task_id == 0)
+-		syslog(LOG_INFO, "%s: failed to generate random task ID, "
++		_pam_log(LOG_INFO, "%s: failed to generate random task ID, "
+ 				"falling back to PID", __FUNCTION__);
+ 
+ 	return _pam_account(pamh, argc, argv, TAC_PLUS_ACCT_FLAG_START, NULL);
+@@ -775,10 +777,10 @@
+ 	ctrl = _pam_parse(argc, argv);
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
++		_pam_log(LOG_DEBUG, "%s: called (pam_tacplus v%u.%u.%u)", __FUNCTION__,
+ 				PAM_TAC_VMAJ, PAM_TAC_VMIN, PAM_TAC_VPAT);
+ 
+-	syslog(LOG_DEBUG, "%s(flags=%d, argc=%d)", __func__, flags, argc);
++	_pam_log(LOG_DEBUG, "%s(flags=%d, argc=%d)", __func__, flags, argc);
+ 
+ 	if ((pam_get_item(pamh, PAM_OLDAUTHTOK, &pam_pass) == PAM_SUCCESS)
+ 			&& (pam_pass != NULL)) {
+@@ -796,17 +798,17 @@
+ 	}
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: user [%s] obtained", __FUNCTION__, user);
++		_pam_log(LOG_DEBUG, "%s: user [%s] obtained", __FUNCTION__, user);
+ 
+ 	tty = _pam_get_terminal(pamh);
+ 	if (!strncmp(tty, "/dev/", 5))
+ 		tty += 5;
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: tty [%s] obtained", __FUNCTION__, tty);
++		_pam_log(LOG_DEBUG, "%s: tty [%s] obtained", __FUNCTION__, tty);
+ 
+ 	r_addr = _pam_get_rhost(pamh);
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: rhost [%s] obtained", __FUNCTION__, r_addr);
++		_pam_log(LOG_DEBUG, "%s: rhost [%s] obtained", __FUNCTION__, r_addr);
+ 
+ 	if (PAM_SILENT == (flags & PAM_SILENT)) {
+ 		status = PAM_AUTHTOK_ERR;
+@@ -816,7 +818,7 @@
+ 	status = PAM_TRY_AGAIN;
+ 	for (srv_i = 0; srv_i < tac_srv_no; srv_i++) {
+ 		if (ctrl & PAM_TAC_DEBUG)
+-			syslog(LOG_DEBUG, "%s: trying srv %lu", __FUNCTION__, srv_i);
++			_pam_log(LOG_DEBUG, "%s: trying srv %lu", __FUNCTION__, srv_i);
+ 
+ 		tac_fd = tac_connect_single(tac_srv[srv_i].addr, tac_srv[srv_i].key,
+ 				NULL, tac_timeout);
+@@ -826,7 +828,7 @@
+ 		}
+ 		if (PAM_PRELIM_CHECK == (flags & PAM_PRELIM_CHECK)) {
+ 			if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-				syslog(LOG_DEBUG, "%s: finishing PAM_PRELIM_CHECK with srv %lu",
++				_pam_log(LOG_DEBUG, "%s: finishing PAM_PRELIM_CHECK with srv %lu",
+ 						__FUNCTION__, srv_i);
+ 
+ 			close(tac_fd);
+@@ -858,7 +860,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_PASS:
+ 				/* success */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_PASS");
+ 
+ 				if (NULL != conv_msg.msg) {
+@@ -866,7 +868,7 @@
+ 					retval = converse(pamh, 1, &conv_msg, &resp);
+ 					if (PAM_SUCCESS == retval) {
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
++							_pam_log(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
+ 					} else {
+ 						_pam_log(LOG_WARNING,
+ 								"%s: error sending msg=\"%s\", retval=%d",
+@@ -879,13 +881,13 @@
+ 				set_active_server(&tac_srv[srv_i]);
+ 
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG, "%s: active srv %lu", __FUNCTION__, srv_i);
++					_pam_log(LOG_DEBUG, "%s: active srv %lu", __FUNCTION__, srv_i);
+ 
+ 				break;
+ 
+ 			case TAC_PLUS_AUTHEN_STATUS_FAIL:
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_FAIL");
+ 
+ 				if (NULL != conv_msg.msg) {
+@@ -893,7 +895,7 @@
+ 					retval = converse(pamh, 1, &conv_msg, &resp);
+ 					if (PAM_SUCCESS == retval) {
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
++							_pam_log(LOG_DEBUG, "send msg=\"%s\"", conv_msg.msg);
+ 					} else {
+ 						_pam_log(LOG_WARNING,
+ 								"%s: error sending msg=\"%s\", retval=%d",
+@@ -910,7 +912,7 @@
+ 
+ 			case TAC_PLUS_AUTHEN_STATUS_GETDATA:
+ 				if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_GETDATA");
+ 
+ 				if (NULL != conv_msg.msg) {
+@@ -921,11 +923,11 @@
+ 					retval = converse(pamh, 1, &conv_msg, &resp);
+ 					if (PAM_SUCCESS == retval) {
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "sent msg=\"%s\", resp=\"%s\"",
++							_pam_log(LOG_DEBUG, "sent msg=\"%s\", resp=\"%s\"",
+ 									conv_msg.msg, resp->resp);
+ 
+ 						if (PAM_TAC_DEBUG == (ctrl & PAM_TAC_DEBUG))
+-							syslog(LOG_DEBUG, "%s: calling tac_cont_send",
++							_pam_log(LOG_DEBUG, "%s: calling tac_cont_send",
+ 									__FUNCTION__);
+ 
+ 						if (0
+@@ -942,7 +944,7 @@
+ 						communicating = 0;
+ 					}
+ 				} else {
+-					syslog(LOG_ERR,
++					_pam_log(LOG_ERR,
+ 							"GETDATA response with no message, returning PAM_TRY_AGAIN");
+ 					communicating = 0;
+ 				}
+@@ -952,7 +954,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_GETUSER:
+ 				/* not implemented */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_GETUSER");
+ 
+ 				communicating = 0;
+@@ -960,11 +962,11 @@
+ 
+ 			case TAC_PLUS_AUTHEN_STATUS_GETPASS:
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_GETPASS");
+ 
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG, "%s: calling tac_cont_send",
++					_pam_log(LOG_DEBUG, "%s: calling tac_cont_send",
+ 							__FUNCTION__);
+ 
+ 				if (tac_cont_send(tac_fd, pass) < 0) {
+@@ -979,7 +981,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_RESTART:
+ 				/* try it again */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_RESTART");
+ 
+ 				/*
+@@ -993,7 +995,7 @@
+ 			case TAC_PLUS_AUTHEN_STATUS_ERROR:
+ 				/* server has problems */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_ERROR");
+ 
+ 				communicating = 0;
+@@ -1003,7 +1005,7 @@
+ 				/* server tells to try a different server address */
+ 				/* not implemented */
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG,
++					_pam_log(LOG_DEBUG,
+ 							"tacacs status: TAC_PLUS_AUTHEN_STATUS_FOLLOW");
+ 
+ 				communicating = 0;
+@@ -1014,7 +1016,7 @@
+ 					/* connection error */
+ 					communicating = 0;
+ 					if (ctrl & PAM_TAC_DEBUG)
+-						syslog(LOG_DEBUG,
++						_pam_log(LOG_DEBUG,
+ 								"error communicating with tacacs server");
+ 					break;
+ 				}
+@@ -1022,7 +1024,7 @@
+ 				/* unknown response code */
+ 				communicating = 0;
+ 				if (ctrl & PAM_TAC_DEBUG)
+-					syslog(LOG_DEBUG, "tacacs status: unknown response 0x%02x",
++					_pam_log(LOG_DEBUG, "tacacs status: unknown response 0x%02x",
+ 							msg);
+ 			}
+ 
+@@ -1044,7 +1046,7 @@
+ 		_pam_log(LOG_ERR, "no more servers to connect");
+ 
+ 	if (ctrl & PAM_TAC_DEBUG)
+-		syslog(LOG_DEBUG, "%s: exit with pam status: %d", __FUNCTION__, status);
++		_pam_log(LOG_DEBUG, "%s: exit with pam status: %d", __FUNCTION__, status);
+ 
+ 	if (NULL != pass) {
+ 		bzero(pass, strlen(pass));
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/support.c src/support.c
+--- upstream/support.c	2020-10-27 08:39:57.000000000 +0000
++++ src/support.c	2026-01-14 12:01:11.000000000 +0000
+@@ -24,6 +24,8 @@
+ #define PAM_SM_SESSION
+ #define PAM_SM_PASSWORD
+ 
++#include <tlt_logger.h>
++
+ #include "config.h"
+ #include "support.h"
+ #include "pam_tacplus.h"
+@@ -52,7 +54,7 @@
+ 
+     va_start(args, format);
+     vsnprintf(msg, sizeof(msg), format, args);
+-    syslog(err, "PAM-tacplus: %s", msg);
++    _log(err, "tacplus: %s", msg);
+     va_end(args);
+ }
+ 
+@@ -121,7 +123,7 @@
+     char *pass = NULL;
+ 
+     if (ctrl & PAM_TAC_DEBUG)
+-        syslog(LOG_DEBUG, "%s: called", __FUNCTION__);
++        _pam_log(LOG_DEBUG, "%s: called", __FUNCTION__);
+ 
+     if ((ctrl & (PAM_TAC_TRY_FIRST_PASS | PAM_TAC_USE_FIRST_PASS))
+         && (pam_get_item(pamh, PAM_AUTHTOK, &pam_pass) == PAM_SUCCESS)
+@@ -173,7 +175,7 @@
+     *password = pass;       /* this *MUST* be free()'d by this module */
+ 
+     if (ctrl & PAM_TAC_DEBUG)
+-        syslog(LOG_DEBUG, "%s: obtained password", __FUNCTION__);
++        _pam_log(LOG_DEBUG, "%s: obtained password", __FUNCTION__);
+ 
+     return PAM_SUCCESS;
+ }
+@@ -249,6 +251,8 @@
+     int ctrl = 0;
+     const char *current_secret = NULL;
+ 
++    /* default to debug, tlt_logger will filter as needed */
++    ctrl |= PAM_TAC_DEBUG;
+     /* otherwise the list will grow with each call */
+     memset(tac_srv, 0, sizeof(tacplus_server_t) * TAC_PLUS_MAXSERVERS);
+     memset(&tac_srv_addr, 0, sizeof(struct addrinfo) * TAC_PLUS_MAXSERVERS);
+@@ -300,7 +304,7 @@
+                     _pam_log(LOG_ERR, "server address too long, sorry");
+                     continue;
+                 }
+-                strcpy(server_buf, *argv + 7);
++                strncpy(server_buf, *argv + 7, strlen(*argv + 7));
+ 
+                 if (*server_buf == '[' &&
+                     (close_bracket = strchr(server_buf, ']')) != NULL) { /* Check for URI syntax */
+@@ -351,12 +355,7 @@
+             }
+         } else if (!strncmp(*argv, "timeout=", 8)) {
+ 
+-#ifdef HAVE_STRTOL
+             tac_timeout = strtol(*argv + 8, NULL, 10);
+-
+-#else
+-            tac_timeout = atoi(*argv + 8);
+-#endif
+             if (tac_timeout == LONG_MAX) {
+                 _pam_log(LOG_ERR, "timeout parameter cannot be parsed as integer: %s", *argv);
+                 tac_timeout = 0;
+diff --recursive --unified --new-file --no-dereference --exclude .gitver upstream/tacc.c src/tacc.c
+--- upstream/tacc.c	2020-10-27 08:39:57.000000000 +0000
++++ src/tacc.c	2026-01-14 12:01:11.000000000 +0000
+@@ -11,7 +11,6 @@
+ #include <stdio.h>
+ #include <sys/socket.h>
+ #include <netdb.h>
+-#include <unistd.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <syslog.h>
+@@ -21,6 +20,7 @@
+ #include <ctype.h>
+ #include <signal.h>
+ #include <sys/time.h>
++#include <termios.h>
+ 
+ #ifdef HAVE_CONFIG_H
+ #include "config.h"
+@@ -37,6 +37,7 @@
+ 
+ /* Prompt displayed when asking for password */
+ #define PASSWORD_PROMPT "Password: "
++#define BASE_LENGTH	256
+ 
+ /* if defined, given command will be run after
+  * successful authentication and proper wtmp
+@@ -132,6 +133,32 @@
+ /* command line letters */
+ char *opt_string = "TRAVhu:p:s:k:c:qr:wnS:P:L:y:";
+ 
++static char *get_pass(const char *prompt) {
++	printf("%s", prompt);
++	static char *buf = NULL;
++	signal(SIGINT, SIG_IGN);
++	signal(SIGTERM, SIG_IGN);
++
++	struct termios term;
++	tcgetattr(1, &term);
++	term.c_lflag &= ~ECHO;
++	tcsetattr(1, TCSANOW, &term);
++
++	int c, len = BASE_LENGTH, pos = 0;
++	buf = realloc(buf, len);
++	buf[0] = '\0';
++	while ((c=fgetc(stdin)) != '\n') {
++		buf[pos++] = (char) c;
++		if (pos >= len)
++			buf = realloc(buf, (len += BASE_LENGTH));
++	}
++	buf[pos] = '\0';
++
++	term.c_lflag |= ECHO;
++	tcsetattr(1, TCSANOW, &term);
++	return buf;
++}
++
+ int main(int argc, char **argv) {
+     char *pass = NULL;
+     char *tty = NULL;
+@@ -288,7 +315,7 @@
+     if (pass == NULL) {
+         signal(SIGALRM, timeout_handler);
+         alarm(GETPASS_TIMEOUT);
+-        pass = getpass(PASSWORD_PROMPT);
++        pass = get_pass(PASSWORD_PROMPT);
+         alarm(0);
+         signal(SIGALRM, SIG_DFL);
+         if (!strlen(pass))

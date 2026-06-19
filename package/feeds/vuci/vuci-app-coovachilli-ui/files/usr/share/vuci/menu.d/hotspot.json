@@ -1,0 +1,76 @@
+{
+  "services/hotspot": {
+    "title": "Hotspot",
+    "index": 190,
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  },
+  "services/hotspot/general": {
+    "title": "General",
+    "index": 10,
+    "view": "services/HotspotGeneral",
+    "acls": ["services/hotspot/general"],
+    "main_page": true,
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  },
+  "services/hotspot/user_management": {
+    "title": "User Management",
+    "index": 50,
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  },
+  "services/hotspot/user_management/sessions": {
+    "title": "Sessions",
+    "index": 10,
+    "view": "services/HotspotSessions",
+    "acls": ["services/hotspot/user_management"],
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  },
+  "services/hotspot/user_management/users": {
+    "title": "Users",
+    "index": 20,
+    "view": "services/HotspotUsers",
+    "acls": ["services/hotspot/user_management"],
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  },
+  "services/hotspot/user_management/groups": {
+    "title": "Groups",
+    "index": 30,
+    "view": "services/HotspotGroups",
+    "acls": ["services/hotspot/groups"],
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  },
+  "system/maintenance/hotspot": {
+    "title": "Hotspot Log",
+    "acls": ["system/maintenance/hotspot"],
+    "view": "status/HotspotLog",
+    "index": 60,
+    "depends": {
+      "board": {
+        "anyOf": ["has_wifi", "has_ethernet"]
+      }
+    }
+  }
+}

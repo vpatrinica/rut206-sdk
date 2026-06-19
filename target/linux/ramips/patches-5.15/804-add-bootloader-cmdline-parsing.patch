@@ -1,0 +1,47 @@
+--- a/init/main.c
++++ b/init/main.c
+@@ -140,6 +140,7 @@ extern void time_init(void);
+ /* Default late time init is NULL. archs can override this later. */
+ void (*__initdata late_time_init)(void);
+ 
++extern char arcs_cmdline[COMMAND_LINE_SIZE];
+ /* Untouched command line saved by arch-specific code. */
+ char __initdata boot_command_line[COMMAND_LINE_SIZE];
+ /* Untouched saved command line (eg. for /proc) */
+@@ -664,22 +665,23 @@ static void __init mangle_bootargs(char
+  */
+ static void __init setup_command_line(char *command_line)
+ {
+-	size_t len, xlen = 0, ilen = 0;
++	size_t len, xlen = 0, ilen = 0, arcs_cmdline_len = 0;
+ 
+ 	if (extra_command_line)
+ 		xlen = strlen(extra_command_line);
+ 	if (extra_init_args)
+ 		ilen = strlen(extra_init_args) + 4; /* for " -- " */
+ 
++	arcs_cmdline_len = strlen(arcs_cmdline);
+ 	len = xlen + strlen(boot_command_line) + 1;
+ 
+-	saved_command_line = memblock_alloc(len + ilen, SMP_CACHE_BYTES);
++	saved_command_line = memblock_alloc(len + ilen + arcs_cmdline_len, SMP_CACHE_BYTES);
+ 	if (!saved_command_line)
+ 		panic("%s: Failed to allocate %zu bytes\n", __func__, len + ilen);
+ 
+ 	len = xlen + strlen(command_line) + 1;
+ 
+-	static_command_line = memblock_alloc(len, SMP_CACHE_BYTES);
++	static_command_line = memblock_alloc(len + ilen + arcs_cmdline_len, SMP_CACHE_BYTES);
+ 	if (!static_command_line)
+ 		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
+ 
+@@ -693,7 +695,9 @@ static void __init setup_command_line(ch
+ 		strcpy(static_command_line, extra_command_line);
+ 	}
+ 	strcpy(saved_command_line + xlen, boot_command_line);
++	strncat(saved_command_line, arcs_cmdline, arcs_cmdline_len);
+ 	strcpy(static_command_line + xlen, command_line);
++	strncat(static_command_line, arcs_cmdline, arcs_cmdline_len);
+ 
+ 	if (ilen) {
+ 		/*

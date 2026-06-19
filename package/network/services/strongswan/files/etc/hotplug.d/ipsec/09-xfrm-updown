@@ -1,0 +1,22 @@
+#!/bin/sh
+
+[ -z "$PLUTO_IF_ID_OUT" ] && exit 0
+
+. /lib/functions.sh
+
+config="${PLUTO_CONNECTION}"
+config_load ipsec
+config_get route_based_ipsec "$config" route_based_ipsec
+[ "$route_based_ipsec" != "1" ] && exit 0
+
+case "$PLUTO_VERB" in
+    up-client* | up-host*)
+        logger -t "ipsec" "starting xfrm interface ${config%_c}"
+        ifup "${config%_c}"
+        ;;
+    down-client* | down-host*)
+        logger -t "ipsec" "stopping xfrm interface ${config%_c}"
+        ifdown "${config%_c}"
+        ;;
+esac
+

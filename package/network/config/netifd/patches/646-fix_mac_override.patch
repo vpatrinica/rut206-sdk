@@ -1,0 +1,14 @@
+Index: netifd-2025-05-23-7901e66c/port_link.c
+===================================================================
+--- netifd-2025-05-23-7901e66c.orig/port_link.c
++++ netifd-2025-05-23-7901e66c/port_link.c
+@@ -193,7 +193,8 @@ port_entry_update(struct vlist_tree *tre
+ 			device_add_user(&port_new->dev, dev);
+ 		}
+ 
+-		set_device_state(dev, port_new->enabled);
++		if (!port_new->enabled)
++			set_device_state(dev, port_new->enabled);
+ 	}
+ }
+ 

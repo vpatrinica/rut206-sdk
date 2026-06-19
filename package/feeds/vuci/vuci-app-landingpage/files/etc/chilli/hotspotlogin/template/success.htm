@@ -1,0 +1,22 @@
+<html>
+    <%include("header")%>
+    <body>
+        <div class="template">
+            <div class="template__body">
+                <div class="template__picture">
+                    <%include("logo")%>
+                    <h1 class="template__title"><%=var.text.form.picture_title%></h1>
+                </div>
+                <div class="template__panel">
+                    <div class="template__panel-content">
+                        <h2 class="template__panel-title"><%=var.text.success.authorize%></h2>
+                        <p class="template__footer">
+                            <a href="http://<%=uamip%>:<%=uamport%>/logoff" class="template__footer-link"><%=var.text.other.link%></a>
+                            <span class="template__footer-text"><%=var.text.other.logout_suffix%></span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

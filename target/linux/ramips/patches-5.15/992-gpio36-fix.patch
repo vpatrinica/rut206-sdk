@@ -1,0 +1,14 @@
+--- a/drivers/pinctrl/ralink/pinctrl-ralink.c
++++ b/drivers/pinctrl/ralink/pinctrl-ralink.c
+@@ -166,6 +166,11 @@ static int ralink_pmx_group_enable(struc
+ 			p->gpio[p->func[func]->pins[i]] = 0;
+ 		mode |= p->func[func]->value << shift;
+ 	}
++
++	if (reg == SYSC_REG_GPIO_MODE) {
++		mode |= 1 << 16; // workaround to set 'perst' as output
++	}
++
+ 	rt_sysc_w32(mode, reg);
+ 
+ 	return 0;

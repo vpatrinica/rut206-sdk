@@ -1,0 +1,8 @@
+{
+  "network/routes/smcroutes": {
+    "title": "Multicast Routes",
+    "index": 50,
+    "acls": ["network/routes/smcroutes"],
+    "view": "network/SMCRoutes"
+  }
+}

@@ -1,0 +1,80 @@
+diff --git a/Makefile b/Makefile
+index 796be2f..7b79b7a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -9,7 +9,7 @@ IWINFO_LIB_LDFLAGS = $(LDFLAGS) -shared -Wl,-soname -Wl,$(IWINFO_LIB).$(IWINFO_S
+ IWINFO_LIB_OBJ     = iwinfo_utils.o iwinfo_lib.o
+ 
+ IWINFO_LUA         = iwinfo.so
+-IWINFO_LUA_LDFLAGS = $(LDFLAGS) -shared -L. -liwinfo -llua
++IWINFO_LUA_LDFLAGS = $(LDFLAGS) -shared -L. -liwinfo -lluajit-5.1
+ IWINFO_LUA_OBJ     = iwinfo_lua.o
+ 
+ IWINFO_CLI         = iwinfo
+diff --git a/iwinfo_lua.c b/iwinfo_lua.c
+index 53cf0ef..fc9be2c 100644
+--- a/iwinfo_lua.c
++++ b/iwinfo_lua.c
+@@ -886,7 +886,7 @@ LUA_WRAP_STRUCT_OP(wext,hardware_id)
+ 
+ #ifdef USE_WL
+ /* Broadcom table */
+-static const luaL_reg R_wl[] = {
++static const luaL_Reg R_wl[] = {
+ 	LUA_REG(wl,channel),
+ 	LUA_REG(wl,frequency),
+ 	LUA_REG(wl,frequency_offset),
+@@ -919,7 +919,7 @@ static const luaL_reg R_wl[] = {
+ 
+ #ifdef USE_MADWIFI
+ /* Madwifi table */
+-static const luaL_reg R_madwifi[] = {
++static const luaL_Reg R_madwifi[] = {
+ 	LUA_REG(madwifi,channel),
+ 	LUA_REG(madwifi,frequency),
+ 	LUA_REG(madwifi,frequency_offset),
+@@ -952,7 +952,7 @@ static const luaL_reg R_madwifi[] = {
+ 
+ #ifdef USE_QCAWIFI
+ /* Madwifi table */
+-static const luaL_reg R_qcawifi[] = {
++static const luaL_Reg R_qcawifi[] = {
+ 	LUA_REG(qcawifi,channel),
+ 	LUA_REG(qcawifi,frequency),
+ 	LUA_REG(qcawifi,frequency_offset),
+@@ -985,7 +985,7 @@ static const luaL_reg R_qcawifi[] = {
+ 
+ #ifdef USE_NL80211
+ /* NL80211 table */
+-static const luaL_reg R_nl80211[] = {
++static const luaL_Reg R_nl80211[] = {
+ 	LUA_REG(nl80211,channel),
+ 	LUA_REG(nl80211,frequency),
+ 	LUA_REG(nl80211,frequency_offset),
+@@ -1018,7 +1018,7 @@ static const luaL_reg R_nl80211[] = {
+ 
+ #ifdef USE_RALINK
+ /* NL80211 table */
+-static const luaL_reg R_ralink[] = {
++static const luaL_Reg R_ralink[] = {
+ 	LUA_REG(ralink,channel),
+ 	LUA_REG(ralink,frequency),
+ 	LUA_REG(ralink,frequency_offset),
+@@ -1051,7 +1051,7 @@ static const luaL_reg R_ralink[] = {
+ 
+ /* Wext table */
+ #ifdef USE_WEXT
+-static const luaL_reg R_wext[] = {
++static const luaL_Reg R_wext[] = {
+ 	LUA_REG(wext,channel),
+ 	LUA_REG(wext,frequency),
+ 	LUA_REG(wext,frequency_offset),
+@@ -1083,7 +1083,7 @@ static const luaL_reg R_wext[] = {
+ #endif
+ 
+ /* Common */
+-static const luaL_reg R_common[] = {
++static const luaL_Reg R_common[] = {
+ 	{ "type", iwinfo_L_type },
+ 	{ "__gc", iwinfo_L__gc  },
+ 	{ NULL, NULL }

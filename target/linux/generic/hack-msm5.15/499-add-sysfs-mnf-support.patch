@@ -1,0 +1,21 @@
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -65,6 +65,8 @@ source "drivers/i3c/Kconfig"
+ 
+ source "drivers/spi/Kconfig"
+ 
++source "drivers/sysfs-mnfinfo/Kconfig"
++
+ source "drivers/spmi/Kconfig"
+ 
+ source "drivers/hsi/Kconfig"
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -149,6 +149,7 @@ obj-$(CONFIG_GREYBUS)		+= greybus/
+ obj-$(CONFIG_COMEDI)		+= comedi/
+ obj-$(CONFIG_STAGING)		+= staging/
+ obj-y				+= platform/
++obj-$(CONFIG_SYSFS_MNFINFO)	+= sysfs-mnfinfo/
+ 
+ obj-$(CONFIG_MAILBOX)		+= mailbox/
+ obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/

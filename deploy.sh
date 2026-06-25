@@ -43,8 +43,26 @@ if [ -f .env ]; then
 fi
 
 # Do NOT provide a default password here. Set DEVICE_PASS in your environment
-# or in a local .env file (recommended). If empty, the script will prompt.
+# or in a local .env file (recommended). If empty, prompt interactively
+# (only when running in a TTY) to avoid committing secrets to git.
 DEVICE_PASS="${DEVICE_PASS:-}"
+
+# Prompt for DEVICE_PASS if not set and a TTY is available
+if [ -z "${DEVICE_PASS}" ]; then
+    if [ -t 0 ]; then
+        printf "Enter password for %s@%s: " "${DEVICE_USER}" "${DEVICE_IP}"
+        # read silently
+        read -rs DEVICE_PASS
+        echo
+        if [ -z "${DEVICE_PASS}" ]; then
+            log_err "No password provided. Aborting."
+            exit 1
+        fi
+    else
+        log_err "DEVICE_PASS not set and no TTY available. Export DEVICE_PASS or provide a .env file."
+        exit 1
+    fi
+fi
 
 SDK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SDK_DIR}"

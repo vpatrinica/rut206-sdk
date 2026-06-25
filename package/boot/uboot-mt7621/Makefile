@@ -24,18 +24,18 @@ PYTHON27:=$(TOOLCHAIN_DIR)/usr/local/py27/bin/python2
 
 define Build/Configure
 	$(if $(CONFIG_TARGET_qualcommbe_ipq53xx),\
-		$(if $(call device_shortname),\
-			$(MAKE) -C $(PKG_BUILD_DIR) ipq5332_tlt_$(call device_shortname)_defconfig,\
-			$(MAKE) -C $(PKG_BUILD_DIR) ipq5332_tlt_rutn_defconfig;) \
-	, $(if $(CONFIG_TARGET_ramips_mt76x8),\
-		$(if $(call device_shortname),\
-			$(MAKE) -C $(PKG_BUILD_DIR) mt7628_tlt_$(call device_shortname)_defconfig,\
-			$(MAKE) -C $(PKG_BUILD_DIR) mt7628_tlt_rute_defconfig;) \
-	, \
-		$(if $(call device_shortname),\
-			$(MAKE) -C $(PKG_BUILD_DIR) mt7621_tlt_$(call device_shortname)_defconfig,\
-			$(MAKE) -C $(PKG_BUILD_DIR) mt7621_tlt_rutm_defconfig;) \
-	))
+                $(if $(and $(call device_shortname),$(wildcard $(PKG_BUILD_DIR)/configs/ipq5332_tlt_$(call device_shortname)_defconfig)),\
+                        $(MAKE) -C $(PKG_BUILD_DIR) ipq5332_tlt_$(call device_shortname)_defconfig,\
+                        $(MAKE) -C $(PKG_BUILD_DIR) ipq5332_tlt_rutn_defconfig;) \
+        , $(if $(CONFIG_TARGET_ramips_mt76x8),\
+                $(if $(and $(call device_shortname),$(wildcard $(PKG_BUILD_DIR)/configs/mt7628_tlt_$(call device_shortname)_defconfig)),\
+                        $(MAKE) -C $(PKG_BUILD_DIR) mt7628_tlt_$(call device_shortname)_defconfig,\
+                        $(MAKE) -C $(PKG_BUILD_DIR) mt7628_tlt_rute_defconfig;) \
+        , \
+                $(if $(and $(call device_shortname),$(wildcard $(PKG_BUILD_DIR)/configs/mt7621_tlt_$(call device_shortname)_defconfig)),\
+                        $(MAKE) -C $(PKG_BUILD_DIR) mt7621_tlt_$(call device_shortname)_defconfig,\
+                        $(MAKE) -C $(PKG_BUILD_DIR) mt7621_tlt_rutm_defconfig;) \
+        ))
 endef
 
 OVERRIDE_PATH := /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

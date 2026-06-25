@@ -261,11 +261,11 @@ define Image/mkfs/squashfs
 	echo 'IPKG_INSTROOT="$(call mkfs_target_dir,$(1))"' > $@.fakeroot-script
 	echo 'root="$$IPKG_INSTROOT"' >> $@.fakeroot-script
 	echo 'in_fakeroot=y' >> $@.fakeroot-script
-	echo '. $(call mkfs_target_dir,$(1))/lib/functions.sh' >> $@.fakeroot-script
+	echo '[ -f $(call mkfs_target_dir,$(1))/lib/functions.sh ] && . $(call mkfs_target_dir,$(1))/lib/functions.sh || true' >> $@.fakeroot-script
 	echo "for file in $(call mkfs_target_dir,$(1))/usr/lib/opkg/info/*.control ; do" >> $@.fakeroot-script
 	echo '	file="$${file##*/}"' >> $@.fakeroot-script
 	echo '	file="$${file%.control}"' >> $@.fakeroot-script
-	echo '	set_file_attributes "$$file"' >> $@.fakeroot-script
+	echo '	type set_file_attributes >/dev/null 2>&1 && set_file_attributes "$$file" || true' >> $@.fakeroot-script
 	echo "done" >> $@.fakeroot-script
 	in_fakeroot=y ; echo "$(Image/mkfs/squashfs-common)" >> $@.fakeroot-script
 	chmod +x $@.fakeroot-script

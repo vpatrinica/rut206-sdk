@@ -28,7 +28,7 @@ define Package/gpsctl
 	SECTION:=base
 	CATEGORY:=Base system
 	TITLE:=Console line interface for gpsd daemon.
-	DEPENDS:=+libgps +gpsd
+	DEPENDS:=+libgps +gpsd +libubus
 endef
 
 define Package/ntp_gps

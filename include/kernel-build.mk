@@ -66,6 +66,7 @@ ifdef CONFIG_COLLECT_KERNEL_DEBUG
 		$(STAGING_DIR_ROOT)/lib/modules/$(LINUX_VERSION)/* \
 		$(KERNEL_BUILD_DIR)/debug/modules/
 	$(FIND) $(KERNEL_BUILD_DIR)/debug -type f | $(XARGS) $(KERNEL_CROSS)strip --only-keep-debug
+	mkdir -p $(BIN_DIR)
 	$(TAR) c -C $(KERNEL_BUILD_DIR) debug \
 		$(if $(SOURCE_DATE_EPOCH),--mtime="@$(SOURCE_DATE_EPOCH)") \
 		| zstd -T0 -f -o $(BIN_DIR)/kernel-debug.tar.zst

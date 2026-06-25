@@ -55,7 +55,7 @@ $(eval tolower = $(call __tr_template,$(chars_upper),$(chars_lower)))
 
 version_abbrev = $(if $(if $(CHECK),,$(DUMP)),$(1),$(shell printf '%.8s' $(1)))
 
-device_shortname = $(call qstrip,$(subst DEVICE_teltonika_,,$(subst _test,,$(or $(CONFIG_TARGET_MULTI_PROFILE_NAME),$(CONFIG_TARGET_PROFILE)))))
+device_shortname = $(call qstrip,$(subst DEVICE_TEMPLATE_teltonika_,,$(subst DEVICE_teltonika_,,$(subst _test,,$(or $(CONFIG_TARGET_MULTI_PROFILE_NAME),$(CONFIG_TARGET_PROFILE))))))
 
 _SINGLE=export MAKEFLAGS=$(space);
 CFLAGS:=

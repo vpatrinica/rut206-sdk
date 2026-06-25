@@ -31,7 +31,20 @@ log_err() {
 # Configuration Defaults (can be overridden via environment variables)
 DEVICE_IP="${DEVICE_IP:-192.168.1.1}"
 DEVICE_USER="${DEVICE_USER:-root}"
-DEVICE_PASS="${DEVICE_PASS:-AVPteltonika123$}"
+
+# Load a local .env file if present. This lets you keep secrets out of git
+# by adding a .env file to .gitignore or exporting DEVICE_PASS in your shell.
+if [ -f .env ]; then
+    # shellcheck disable=SC1091
+    set -o allexport
+    # shellcheck source=/dev/null
+    source .env
+    set +o allexport
+fi
+
+# Do NOT provide a default password here. Set DEVICE_PASS in your environment
+# or in a local .env file (recommended). If empty, the script will prompt.
+DEVICE_PASS="${DEVICE_PASS:-}"
 
 SDK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SDK_DIR}"

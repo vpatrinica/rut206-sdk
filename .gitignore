@@ -19,3 +19,4 @@ key-build.ucert.revoke
 *.tar.gz
 
 .env
+/package/*
